@@ -69,7 +69,7 @@ class Participant(Species):
     """
     def __init__(self, Species, stoichiometric_coefficient, concentration):
         super().__init__(Species.name, Species.DG_f, Species.S, Species.state,Species.charge)
-        self.stioch_coeff = stoichiometric_coefficient
+        self.stoich_coeff = stoichiometric_coefficient
         self.X = concentration
 
 class Half_Cell:
@@ -91,13 +91,13 @@ class Half_Cell:
             self.G[indx] = i.DG_f
             self.S[indx] = i.S
             self.X[indx] = i.X
-            self.nu[indx] = i.stioch_coeff*-1
+            self.nu[indx] = i.stoich_coeff*-1
             indx = indx + 1
         for i in Products:
             self.name[indx] = i.name
             self.G[indx] = i.DG_f
             self.S[indx] = i.S
             self.X[indx] = i.X
-            self.nu[indx] = i.stioch_coeff
+            self.nu[indx] = i.stoich_coeff
             indx = indx + 1
 
