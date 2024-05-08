@@ -12,7 +12,6 @@ def Half_Cell_Eqlib_Potential(HalfCell,F = 96.48534, T_amb = 298.15, R = 0.00831
     # F = 96.48534 #Faraday's number [kC/equivalence]
     # R = 0.0083145 #Universal gas constant [kJ/mol-K]
     n_elc = HalfCell.n
-    print("n",n_elc)
     #T_amb = 273.15 + 25 #[K]
     T = HalfCell.Temp
      
