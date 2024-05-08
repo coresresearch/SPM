@@ -7,12 +7,12 @@ import math
 
 def Half_Cell_Eqlib_Potential(HalfCell,F = 96.48534, T_amb = 298.15, R = 0.0083145):
     """
-    Help for this function.
+    Returns the half cell potential
     """
     # F = 96.48534 #Faraday's number [kC/equivalence]
     # R = 0.0083145 #Universal gas constant [kJ/mol-K]
     n_elc = HalfCell.n
-    #T_amb = 273.15 + 25 #[K]
+    #T_amb = 273.15 + 25 [K]
     T = HalfCell.Temp
      
     Delta_G_cell = np.dot(HalfCell.G,HalfCell.nu)
@@ -25,16 +25,18 @@ def Half_Cell_Eqlib_Potential(HalfCell,F = 96.48534, T_amb = 298.15, R = 0.00831
 
 def current_density(i_o,V,U,T,F = 96.48534, Beta = 0.5, R = 0.0083145, n = 1):
     """
-    The number this returns is absolutly massive, but I cannot find an error in my equation
+    This function calculates the faraday current density at the electrode-electrolyte interface, using the
+    Butler-Volmer model (A/m2). Positive current is defined as positive current delivered from the electrolyte to the
+    electrode.
     
     Parameters
     ----------
     i_o : Exchange Current Density [mA/cm^2] 
-    V : Electrode potential difference at the electrode-electrolyte interface [V]
+    V : Electrode potential difference at the electrode-electrolyte interface (phi_ed - phi_elyte) [V]
     U : Equilibrium potential [V]
     T : Temperature of the interface [K]    
     F : Optional, Faraday's number
-        The default is 96.48534.96.48534 [kC/equivalence]
+        The default is 96.48534 [kC/equivalence]
     Beta : Optional, The fraction of the total energy that impacts the activation energy of the cathode
         The default is 0.5
     R : Optional, Universal gas constant
@@ -53,20 +55,20 @@ class Species:
     """
     Defines the thermodynamic properties of the species
     """
-    def __init__(self, Name, Gibbs_energy_formation, Standard_Entropy,Standard_State):
+    def __init__(self, Name, Gibbs_energy_formation, Standard_Entropy,Standard_State,charge):
         self.name = Name
         self.DG_f = Gibbs_energy_formation
         self.S = Standard_Entropy
         self.state = Standard_State
+        self.charge = charge
 
 class Participant(Species):
     """
     Subclass of Species
-    Takes in the Species, ionic charge, stoichiometric coefficient, and concentration   
+    Takes in the Species, stoichiometric coefficient, and concentration   
     """
-    def __init__(self, Species,charge, stoichiometric_coefficient, concentration):
-        super().__init__(Species.name, Species.DG_f, Species.S, Species.state)
-        self.charge = charge
+    def __init__(self, Species, stoichiometric_coefficient, concentration):
+        super().__init__(Species.name, Species.DG_f, Species.S, Species.state,Species.charge)
         self.stioch_coeff = stoichiometric_coefficient
         self.X = concentration
 
