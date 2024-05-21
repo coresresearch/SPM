@@ -3,7 +3,7 @@
 # This file serves as the main model file.  
 #   It is called by the user to run the mode
 # 
-from spm_functions import Half_Cell_Eqlib_Potential,current_density,Species,Participant,Half_Cell
+from spm_functions import Half_Cell_Eqlib_Potential,Butler_Volmer,Species,Participant,Half_Cell
 
 C6 = Species("C",0,0,1,0)    
 LiC6 = Species("LiC",-230.0,-11.2,1,0)
