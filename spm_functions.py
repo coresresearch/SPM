@@ -23,7 +23,7 @@ def Half_Cell_Eqlib_Potential(HalfCell,F = 96.48534, T_amb = 298.15, R = 0.00831
     U_Cell = U_0_Cell - R*T/n_elc/F*np.log(np.prod(np.power(HalfCell.X,HalfCell.nu)))
     return U_Cell
 
-def current_density(i_o,V,U,T,F = 96.48534, Beta = 0.5, R = 0.0083145, n = 1):
+def Butler_Volmer(i_o,V,U,T,F = 96.48534, Beta = 0.5, R = 0.0083145, n = 1):
     """
     This function calculates the faraday current density at the electrode-electrolyte interface, using the
     Butler-Volmer model (A/m2). Positive current is defined as positive current delivered from the electrolyte to the
@@ -48,8 +48,8 @@ def current_density(i_o,V,U,T,F = 96.48534, Beta = 0.5, R = 0.0083145, n = 1):
     -------
     i : current density at the electrode-electrolyte interface [mA/cm^2]
     """
-    i= i_o*(math.exp((Beta)*F*n*(V-U)/(R*T)) - math.exp(-(1-Beta)*F*n*(V-U)/(R*T)))
-    return i
+    i_far= i_o*(math.exp((Beta)*F*n*(V-U)/(R*T)) - math.exp(-(1-Beta)*F*n*(V-U)/(R*T)))
+    return i_far
 
 class Species:
     """
