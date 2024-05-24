@@ -20,6 +20,5 @@ HC = Half_Cell(React,Prod,1,298.15)
 
 U = Half_Cell_Eqlib_Potential(HC)
 print(U,"[V]")
-
 I = Butler_Volmer(12.3,-0.8,U,HC.Temp)
 print(I,"[mA/cm2]")
