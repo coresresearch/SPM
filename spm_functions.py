@@ -20,7 +20,7 @@ def Half_Cell_Eqlib_Potential(HalfCell,F = 96.48534, T_amb = 298.15, R = 0.00831
 
     U_0_Cell_amb =  -Delta_G_cell/(n_elc*F)
     U_0_Cell = U_0_Cell_amb + (T- T_amb)*Delta_S/(n_elc*F)
-    U_Cell = U_0_Cell - R*T/n_elc/F*np.log(np.prod(np.power(HalfCell.X,HalfCell.nu)))
+    U_Cell = U_0_Cell - R*T/n_elc/F*np.log(np.prod(np.power(HalfCell.C,HalfCell.nu)))
     return U_Cell
 
 def Butler_Volmer(i_o,V,U,BnF_RT_a,BnF_RT_c):
@@ -70,7 +70,7 @@ class Participant(Species):
     def __init__(self, Species, stoichiometric_coefficient, concentration):
         super().__init__(Species.name, Species.DG_f, Species.S, Species.state,Species.charge)
         self.stoich_coeff = stoichiometric_coefficient
-        self.X = concentration
+        self.C = concentration
 
 class Half_Cell:
     """
@@ -84,20 +84,47 @@ class Half_Cell:
         self.name = [None]*(len(Reactants)+len(Products))
         self.G = [None]*(len(Reactants)+len(Products))
         self.S = [None]*(len(Reactants)+len(Products))
-        self.X = [None]*(len(Reactants)+len(Products))
+        self.C = [None]*(len(Reactants)+len(Products))
         self.nu = [None]*(len(Reactants)+len(Products))
         for i in Reactants:
             self.name[indx] = i.name
             self.G[indx] = i.DG_f
             self.S[indx] = i.S
-            self.X[indx] = i.X
+            self.C[indx] = i.C
             self.nu[indx] = i.stoich_coeff*-1
             indx = indx + 1
         for i in Products:
             self.name[indx] = i.name
             self.G[indx] = i.DG_f
             self.S[indx] = i.S
-            self.X[indx] = i.X
+            self.C[indx] = i.C
             self.nu[indx] = i.stoich_coeff
             indx = indx + 1
 
+def residual(_,SV,i_ext,BnF_RT_a,BnF_RT_c,Cap,i_o,A,nuA_nF,HC,indx_Li):
+    '''
+    Derivations
+
+    Change in Double Layer potential [0]:
+    Eta_an = Phi_an - Phi_el - U ; Phi_an = 0 ; Phi_an = Phi_el - delta_Phi_dl_an
+    Eta_an = - delta_Phi_dl_an - U => sub into Butler Volmer
+    i_ext = i_dl + i_far ; -i_dl = Cap_dl*(d Delta_Phi_dl/ dt) 
+    (i_far - i_ext)/Cap_dl = d Delta_Phi_dl/dt
+
+    Change in Lithium concentration in the Anode [1]:
+    dN_Li/dt = -s_dot_Li+*A_surf*N_p ; dC_Li/dt = (dN_Li/dt)/(V*N_p) ; s_dot_Li+ = -i_far*nu_Li+/(n*F) ; A_suf/V = A_s
+    dC_Li/dt = i_far*nu_Li+*A_s/(n*F)
+    '''
+    V = SV[0]
+    C_Li = SV[indx_Li]
+    HC.C[indx_Li] = C_Li # Updates the concentraion of Lithium in the anode
+    
+    U = Half_Cell_Eqlib_Potential(HC)
+
+    i_far= Butler_Volmer(i_o,V,U,BnF_RT_a,BnF_RT_c)
+    
+    dPhi_dl_dt = (i_far - i_ext/A)/Cap  # returns an expression for d Delta_Phi_dl/dt in terms of Delta_Phi_dl
+    dC_Li_dt = i_far*nuA_nF # returns an expression for dC_Li/dt in terms of Delta_Phi_dl
+    dSVdt = [dPhi_dl_dt,dC_Li_dt]
+    
+    return dSVdt
