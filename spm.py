@@ -52,18 +52,12 @@ A_sg = Epsilon_g*Delta_y*A_s # interface surface area per geometric surface area
 nuA_nF = nu_Li_plus*A_s/n/F # combine constants for convenience
 
 # Initial Values
-factor = 180000
-
 X_g_0 = 1 - X_Li_0 # Initial Mole Fraction of Graphite [-]
 N_g = V*rho_g/MW_g # The number of moles of graphite in the Anode [mol] (this number does not change)
 C_g = N_g/V # Concentration of graphite in the anode [mol/m^3] (this number does not change)
 N_Li_0 = N_g*(1/X_g_0 - 1) # Initial number of Moles of Lithium in the Anode [mol]
 C_Li_0 = N_Li_0/V # initial value for Lithium in the Anode [mol_Li/m^3]
 
-C_g = C_g/factor
-print(C_g)
-C_Li_0 = C_Li_0/factor
-print(C_Li_0)
 '''
 Set up the Half Cell
 '''
@@ -85,7 +79,7 @@ indx_Li = 1 # index for solid lithium in the anode in the half cell object
 Integration
 '''
 t_start = 0 # [s]
-t_end = 1e-4 # length of time passed in the integration [s]
+t_end = 1e-2 # length of time passed in the integration [s]
 t_span = [t_start,t_end]
 SV_0 = [Phi_dl_0,C_Li_0] # initial values
 N = 10000 # number of time steps
