@@ -5,22 +5,33 @@
 import numpy as np 
 import math
 
-def Half_Cell_Eqlib_Potential(HalfCell,F = 96.48534, T_amb = 298.15, R = 0.0083145):
+def Half_Cell_Eqlib_Potential(HalfCell,F = 96485.34, T_amb = 298.15, R = 8.3145):
     """
     Returns the half cell potential
+    
+    Parameters
+    ----------
+    HalfCell : Object contianing the reaction participants and thier properties
+    F : Optional, Faraday's number 
+        The default is 96485.34 [C/equivalence]
+    T_amb : Optional, Standard Temperature  
+        The default is 298.15 [K]
+    R : Optional, Universal gas constant
+        The default is 8.3145 [kJ/mol-K]
+    
+     Returns
+    -------
+    U_Cell : The equalibrium (open cell) potential for the half cell [V]
     """
-    # F = 96.48534 #Faraday's number [kC/equivalence]
-    # R = 0.0083145 #Universal gas constant [kJ/mol-K]
     n_elc = HalfCell.n
-    #T_amb = 273.15 + 25 [K]
     T = HalfCell.Temp
      
-    Delta_G_cell = np.dot(HalfCell.G,HalfCell.nu)
-    Delta_S = np.dot(HalfCell.S,HalfCell.nu)
+    Delta_G_cell = np.dot(HalfCell.G,HalfCell.nu) # Standard Gibbs Free Energy for the half cell reaction
+    Delta_S = np.dot(HalfCell.S,HalfCell.nu) # Standard Entropy for the half cell reaction
 
-    U_0_Cell_amb =  -Delta_G_cell/(n_elc*F)
-    U_0_Cell = U_0_Cell_amb + (T- T_amb)*Delta_S/(n_elc*F)
-    U_Cell = U_0_Cell - R*T/n_elc/F*np.log(np.prod(np.power(HalfCell.C,HalfCell.nu)))
+    U_0_Cell_amb =  -Delta_G_cell/(n_elc*F) # Standard half cell equalibrium potential
+    U_0_Cell = U_0_Cell_amb + (T- T_amb)*Delta_S/(n_elc*F) # Adjust for temperature
+    U_Cell = U_0_Cell - R*T/n_elc/F*np.log(np.prod(np.power(HalfCell.C,HalfCell.nu))) # adjust for concentration
     return U_Cell
 
 def Butler_Volmer(i_o,V,U,BnF_RT_a,BnF_RT_c):
@@ -31,22 +42,24 @@ def Butler_Volmer(i_o,V,U,BnF_RT_a,BnF_RT_c):
     
     Parameters
     ----------
-    i_o : Exchange Current Density [mA/cm^2] 
+    i_o : Exchange Current Density [A/m^2] 
     V : Electrode potential difference at the electrode-electrolyte interface (phi_ed - phi_elyte) [V]
     U : Equilibrium potential [V]
-    T : Temperature of the interface [K]    
-    F : Optional, Faraday's number
-        The default is 96.48534 [kC/equivalence]
-    Beta : Optional, The fraction of the total energy that impacts the activation energy of the cathode
-        The default is 0.5
-    R : Optional, Universal gas constant
-        The default is 0.0083145 [kJ/mol-K]
-     n: Optional, number of electrons
-        The default is 1 [equivalence/mol]
+ 
+    Inside BnF_RT: a is for anodic, c is for cathodic
+    F : Faraday's number
+        96485.34 [C/equivalence]
+    Beta : The fraction of the total energy that impacts the activation energy of the cathode
+        (Typicaly 0.5) [-]
+    n: number of electrons per mole of reaction
+        [equivalence/mol]
+    R : Universal gas constant
+        8.3145 [J/mol-K]
+    T : Temperature of the interface [K]  
         
     Returns
     -------
-    i : current density at the electrode-electrolyte interface [mA/cm^2]
+    i : current density at the electrode-electrolyte interface [A/m^2]
     """
     i_far= i_o*(math.exp(-BnF_RT_a*(V-U)) - math.exp(BnF_RT_c*(V-U)))
     return i_far
@@ -57,24 +70,24 @@ class Species:
     """
     def __init__(self, Name, Gibbs_energy_formation, Standard_Entropy,Standard_State,charge):
         self.name = Name
-        self.DG_f = Gibbs_energy_formation
-        self.S = Standard_Entropy
-        self.state = Standard_State
-        self.charge = charge
+        self.DG_f = Gibbs_energy_formation # [kJ/mol]
+        self.S = Standard_Entropy          # [J/mol-K]
+        self.state = Standard_State        # [mol/m^3]
+        self.charge = charge               # [elementary charge]
 
 class Participant(Species):
     """
     Subclass of Species
-    Takes in the Species, stoichiometric coefficient, and concentration   
+    Takes in the Species, stoichiometric coefficient, and concentration
     """
     def __init__(self, Species, stoichiometric_coefficient, concentration):
         super().__init__(Species.name, Species.DG_f, Species.S, Species.state,Species.charge)
         self.stoich_coeff = stoichiometric_coefficient
-        self.C = concentration
+        self.C = concentration             # [mol/m^3]
 
 class Half_Cell:
     """
-    Takes in the reactants, products, number of electrons, and the temerature of the half cell in Kelvin
+    Takes in the reactants, products, number of electrons per mol of reaction, and the temerature of the half cell in Kelvin
     Stores each property in an array where the reactants are followed by the products
     """
     def __init__(self, Reactants,Products,n,Temperature):
@@ -141,7 +154,7 @@ def residual(_,SV,i_ext,Anode,Cathode,sigma_s,t_s):
     # I get a math range error in this part which is why I have it commented out for now
     '''
     # Cathode
-    V_c = Delta_Phi_s + SV[2]
+    V_c = Delta_Phi_c + SV[2]
     U_c = Half_Cell_Eqlib_Potential(Cathode.HC)
     i_far_c= Butler_Volmer(Cathode.i_o,V_c,U_c,Cathode.BnF_RT_a,Cathode.BnF_RT_c)
     
