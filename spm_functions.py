@@ -77,7 +77,7 @@ class Half_Cell:
     Takes in the reactants, products, number of electrons, and the temerature of the half cell in Kelvin
     Stores each property in an array where the reactants are followed by the products
     """
-    def __init__(self, Reactants,Products,n,Temperature):
+    def __init__(self, Reactants,Products,n,Temperature, Conc):
         self.n = n
         self.Temp = Temperature
         indx = 0
@@ -85,6 +85,7 @@ class Half_Cell:
         self.G = [None]*(len(Reactants)+len(Products))
         self.S = [None]*(len(Reactants)+len(Products))
         self.C = [None]*(len(Reactants)+len(Products))
+        self.C_0 = Conc
         self.nu = [None]*(len(Reactants)+len(Products))
         for i in Reactants:
             self.name[indx] = i.name
@@ -116,8 +117,9 @@ def residual(_,SV,i_ext,BnF_RT_a,BnF_RT_c,Cap,i_o,A,nuA_nF,HC,indx_Li):
     dC_Li/dt = i_far*nu_Li+*A_s/(n*F)
     '''
     V = SV[0]
-    C_Li = SV[indx_Li]
+    C_Li = SV[1]/HC.C_0
     HC.C[indx_Li] = C_Li # Updates the concentraion of Lithium in the anode
+    HC.C[-1] = 1. - C_Li
     
     U = Half_Cell_Eqlib_Potential(HC)
 
