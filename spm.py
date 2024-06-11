@@ -19,10 +19,8 @@ from spm_functions import Half_Cell_Eqlib_Potential, residual, Species, Particip
 # I do not create an instance of the species/particiant classes for the electron so I track the 
 #   sign of the electron speperately using 'n'
 
-# The cell potential is twice 
+# Since both electrodes are the same, the cell potential (V_cell) is always twice the origonal open cell potential.
 
-plot_Cathode = True
-plot_Anode = True
 '''
 USER INPUTS
 '''
@@ -33,7 +31,7 @@ T = 298.15 # standard temperature [K]
 
 # Initial Conditions
 Phi_dl_0 = 1.5 #-U+ 0.75 # initial value for Phi_dl [V]
-X_Li_0 = 0.5 # Initial Mole Fraction of the Anode for Lithium [-]
+X_Li_0 = 0.4 # Initial Mole Fraction of the Anode for Lithium [-]
 
 # Material parameters:
 MW_g = 12 # Molectular Weight of Graphite [g/mol]
@@ -66,7 +64,7 @@ Constants and Parameters
 F = 96485.34 #Faraday's number [C/mol_electron]
 R = 8.3145 #Universal gas constant [J/mol-K]
 
-# Geometry
+# Geometry (same for both electrodes)
 Vol_a = (4*np.pi/3)*r**3 # Volume of a single anode particle [m^3]
 A_surf = 4*np.pi*r**2 # geometric surface area of a single anode particle [m^2]
 A_s = 3/r # ratio of surface area to volume for the graphite anode [1/m]
@@ -159,7 +157,12 @@ Delta_Phi_s = -i_ex*t_s/sigma_s # Potential drop across the seperator [V]
 # V_cell = Ph_c - Phi_elc_c - Phi_elc_a - Phi_a
 
 # V_cell = delta_Phi_dl_c + delta_Phi_dl_a
-V_cell = SV.y[2] + SV.y[0]
+V_cell = SV.y[2] - SV.y[0]
+
+## Tracking moles of lithium
+mol_a = Vol_a*SV.y[1] # moles of Lithium in the Anode
+mol_c = Vol_a*SV.y[3] # moles of Lithium in the Cathode
+mol_t = mol_c + mol_a # total moles of Lithium
 
 '''
 Plotting
@@ -195,13 +198,15 @@ plt.xlabel("time [s]")
 plt.ylabel("Current [A]")
 plt.legend(['DL','EXT','FAR'], loc = 'lower right')
 
-# Concentration
-plt4 = plt.figure(4)
-plt.plot(SV.t,SV.y[1])
-plt.plot(SV.t,SV.y[3])
+# Amount of Lithium
+plt7 = plt.figure(7)
+plt.plot(SV.t,mol_a)
+plt.plot(SV.t,mol_c)
+plt.plot(SV.t,mol_t,'--')
+plt.legend(['Anode','Cathode','Total'], loc = 'lower left')
+plt.title("Amount of Lithium")
 plt.xlabel("time [s]")
-plt.ylabel("Concentration of Li [mol/m^3]")
-plt.legend(['Anode','Cathode'], loc = 'upper left')
+plt.ylabel("Lithium [mol]")
 
 # Open Cell Potential
 plt5 = plt.figure(5)
@@ -218,8 +223,8 @@ plt.plot(SV.t,SV.y[0],'--')
 plt.plot(SV.t,SV.y[2],'--')
 plt.plot(SV.t,Delta_Phi_s,'--')
 plt.plot(SV.t,V_cell)
-plt.legend([r'$DL_A$',r'$DL_C$','Sep', r'$V_{cell}$'], loc = 'best')
-plt.title("Potential Difference Between the Electrodes")
+plt.legend([r'$\Delta\Phi_{dl_a}$',r'$\Delta\Phi_{dl_c}$',r'$\Delta\Phi_{sep}$', r'$V_{cell}$'], loc = 'best')
+plt.title("Vell Voltage")
 plt.xlabel("time [s]")
 plt.ylabel("Voltage [V]")
 
