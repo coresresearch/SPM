@@ -73,7 +73,7 @@ class Species:
         self.name = Name
         self.DG_f = Gibbs_energy_formation # [J/mol]
         self.S = Standard_Entropy          # [J/mol-K]
-        self.C_int = Standard_State          # [mol/m^3]
+        self.C_int = Standard_State        # [mol/m^3]
         self.charge = charge               # [elementary charge]
 
 class Participant(Species):
@@ -94,11 +94,12 @@ class Half_Cell:
     def __init__(self,Reactants,Products,n,Temperature,Beta,F,R,Cap,i_o,A_sg,A_s,Species_Tracked,ion):
         self.n = n
         self.Temp = Temperature
-        self.BnF_RT_a = Beta*n*F/R/Temperature
-        self.BnF_RT_c = (1-Beta)*n*F/R/Temperature
+        self.BnF_RT_an = Beta*n*F/R/Temperature
+        self.BnF_RT_ca = (1-Beta)*n*F/R/Temperature
         self.Cap = Cap
         self.i_o = i_o
-        self.A = A_sg
+        self.A_sg = A_sg
+        
         indx = 0
         self.name = [None]*(len(Reactants)+len(Products))
         self.G = [None]*(len(Reactants)+len(Products))
@@ -167,9 +168,9 @@ def residual(_,SV,i_ext,Anode,Cathode):
     Anode.C[-1] = 1. - C_Li_a
     
     U_a = Half_Cell_Eqlib_Potential(Anode)
-    i_far_a= Butler_Volmer(Anode.i_o,V_a,U_a,Anode.BnF_RT_a,Anode.BnF_RT_c)
+    i_far_a= Butler_Volmer(Anode.i_o,V_a,U_a,Anode.BnF_RT_an,Anode.BnF_RT_ca)
    
-    dPhi_dl_a_dt = (i_far_a - i_ext/Anode.A)/Anode.Cap  # returns an expression for d Delta_Phi_dl/dt in terms of Delta_Phi_dl
+    dPhi_dl_a_dt = (i_far_a - i_ext/Anode.A_sg)/Anode.Cap  # returns an expression for d Delta_Phi_dl/dt in terms of Delta_Phi_dl
     dC_Li_a_dt = i_far_a*Anode.nuA_nF # returns an expression for dC_Li/dt in terms of Delta_Phi_dl
     
     # Cathode
@@ -180,9 +181,9 @@ def residual(_,SV,i_ext,Anode,Cathode):
     Cathode.C[-1] = 1. - C_Li_c
     
     U_c = Half_Cell_Eqlib_Potential(Cathode)
-    i_far_c = Butler_Volmer(Cathode.i_o,V_c,U_c,Cathode.BnF_RT_a,Cathode.BnF_RT_c)
+    i_far_c = Butler_Volmer(Cathode.i_o,V_c,U_c,Cathode.BnF_RT_an,Cathode.BnF_RT_ca)
     
-    dPhi_dl_c_dt = (i_far_c + i_ext/Cathode.A)/Cathode.Cap
+    dPhi_dl_c_dt = (i_far_c + i_ext/Cathode.A_sg)/Cathode.Cap
     dC_Li_c_dt = i_far_c*Cathode.nuA_nF
 
     dSVdt = [dPhi_dl_a_dt, dC_Li_a_dt, dPhi_dl_c_dt, dC_Li_c_dt]
