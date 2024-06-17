@@ -126,12 +126,13 @@ Cathode = Half_Cell(React_ca,Prod_ca,n,T,Beta,F,R,Cap_dl,i_o,A_sg_ca,A_s_ca,'LiC
 '''
 Integration
 '''
+# Integration parameters 
 t_start = 0 # [s]
 t_end = 3e1 # length of time passed in the integration [s]
 t_span = [t_start,t_end]
 SV_0 = [Phi_dl_0_an,C_Li_0_an,Phi_dl_0_ca,C_Li_0_ca] # initial values
 
-# These are place holders for now, I will change to V_max and V_min soon
+# Integration Limits
 def min_voltage(_,SV,i_ext,Anode,Cathode):
     V_cell = SV[2] + i_ext*t_sep/sigma_sep - SV[0]
     return V_cell - V_min
@@ -144,6 +145,7 @@ def max_voltage(_,SV,i_ext,Anode,Cathode):
 
 max_voltage.terminal = True
 
+# Integrater
 SV = solve_ivp(residual,t_span,SV_0,method='BDF',
                args=(i_ext,Anode,Cathode),
                rtol = 1e-5,atol = 1e-8, events=(min_voltage,max_voltage))
@@ -176,7 +178,11 @@ for ind, ele in enumerate(SV.t):
     
 i_dl_ca = i_ext/A_sg_ca + i_far_ca # Double Layer current [A/m^2]
 
-## Seperator (Phi_el_ca - Ph_el_an)
+## Seperator (Delta_Phi_sep = Phi_el_ca - Ph_el_an)
+# A negative external current to the anode should lead ot Li+ ions traveling from the anode 
+#   to the cathode. In this case, there should be a potential drop due to the ohmic resistance
+#   which would make Phi_el_ca < Ph_el_an and therefore Delta_Phi_sep < 0.
+# Long way of saying Delta_Phi_sep should have the same sign as i_ext
 i_ex = i_ext*np.ones_like(SV.t) # External current as an array [A/m^2]
 Delta_Phi_sep = i_ex*t_sep/sigma_sep # Potential drop across the seperator [V]
 
