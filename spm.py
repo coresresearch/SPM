@@ -225,7 +225,7 @@ for ind, ele in enumerate(Delta_Phi_dl_ca):
     
     i_far_ca[ind] = faradaic_current(i_o,sim_outputs[2,ind],U_cell_ca[ind],Cathode.BnF_RT_an,Cathode.BnF_RT_ca) # Faradaic Current [A/m^2]
     
-i_dl_ca = i_ex/A_sg_ca + i_far_ca # Double Layer current [A/m^2]
+i_dl_ca = -i_ex/A_sg_ca - i_far_ca # Double Layer current [A/m^2]
 
 ## Seperator (Delta_Phi_sep = Phi_el_ca - Ph_el_an)
 # A negative external current to the anode should lead ot Li+ ions traveling from the anode 
