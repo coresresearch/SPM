@@ -156,8 +156,8 @@ def residual(_,SV,i_ext,Anode,Cathode):
     #   so the signs of their coefficients will always be the same which means nuA_nF
     #   is positive. As a result, a positive i_far will cause the concentration
     #   of lithium in the electrode to increase
-    # I hard code in the positions for C6 in this reaction. Since I use the reaction
-    #   LiC6 -> Li+ + C6 + e- for both half cells, grahite is the last partcipant in 
+    # I hard code in the positions for the empty electrode in this reaction. Since I use the reaction
+    #   Lithiated_Electrode -> Li+ + Electrode + e- for both half cells, the empty elcetrode is the last partcipant in 
     #   the list in both HCs
      
     # Anode
