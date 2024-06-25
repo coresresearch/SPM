@@ -10,16 +10,19 @@ from spm_functions import Butler_Volmer as faradaic_current
 from spm_functions import Half_Cell_Eqlib_Potential, residual, Species, Participant, Half_Cell
 
 # Anode is on the left at x=0 and Cathode is on the right
-# LiC6 -> Li+ + C6 + e- (reaction at the anode and cathode)
+# LiC6 -> Li+ + C6 + e- (reaction at the anode)
+# LiFePO4 -> FePO4 + Li+ + e- (reaction at the cathode)
 # I do not track the movement of Li through the anode, only the rate of creation of Li+ at the surface
 # The rate Lithium ions enter the electrolyte from the anode is equal to the rate of Li+ enter the seperator and eventually the cathode
 # I assume the concentration in the electrolyte is in uniform so there is no diffusion and there is no bulk movement of the fluid
 #   so there is no convection therefore there is only migration which is driven by the potential difference
 # Potential drop across the electroltye obeys Ohm's Law
-# The cathode and anode have the same composition and dimensions 
 # I do not create an instance of the species/particiant classes for the electron so I track the 
 #   sign of the electron speperately using 'n'
 # Galvanostatic
+# A positive current dose work so it is when the battery. This is when both reactions proceed spontaniously to reduce their 
+#   thermodynamic potenitals. This happens durring discharging when a postive external current enters the anode
+#   and Lithium ions go from the anode to the cathode.
 
 '''
 USER INPUTS
@@ -39,9 +42,9 @@ t_sim_max = [5,15,5,30,10] # the maximum time the battery will be held at each c
 T = 298.15 # standard temperature [K]
 
 # Initial Conditions
-Phi_dl_0_an = 0.5 # initial value for Phi_dl for the Anode [V]
+Phi_dl_0_an = -0.45 # initial value for Phi_dl for the Anode [V]
 X_Li_0_an = 0.35 # Initial Mole Fraction of the Anode for Lithium [-]
-Phi_dl_0_ca = -0.6 # initial value for Phi_dl for the Cathode [V]
+Phi_dl_0_ca = 0.5 # initial value for Phi_dl for the Cathode [V]
 X_Li_0_ca = 0.72 # Initial Mole Fraction of the Cathode for Lithium [-]
 
 # Material parameters:
@@ -59,13 +62,13 @@ Cap_dl = 6*10**-5 # Double Layer Capacitance [F/m^2]
 Beta = 0.5 # [-] Beta = (1 - Beta) in this case 
 # both Li+ and electrons are products in this reaction so they have postive coefficients
 nu_Li_plus = 1 # stoichiometric coefficient of Lithium [mol_Li+/mol_rxn]
-n = 1 # number of electrons [mol_electrons/mol_rxn]
+n = -1 # number of electrons multiplied by the charge of an electron [mol_electrons/mol_rxn]
 
 # Microstructure
 t_sep =  1e-5 # thickness of the seperator [m]
-Delta_y_an = 25*10**-6 # Anode thickness [m]
+Delta_y_an = 25*10**-4 # Anode thickness [m]
 r_an = 5*10**-6 # Anode particle radius [m]
-Delta_y_ca = 50*10**-6 # Cathode thickness [m]
+Delta_y_ca = 50*10**-4 # Cathode thickness [m]
 r_ca = 5*10**-6 # Cathode particle radius [m]
 Epsilon_g = 0.65 # volume fraction fo graphite [-]
 
@@ -228,11 +231,11 @@ for ind, ele in enumerate(Delta_Phi_dl_ca):
 i_dl_ca = -i_ex/A_sg_ca - i_far_ca # Double Layer current [A/m^2]
 
 ## Seperator (Delta_Phi_sep = Phi_el_ca - Ph_el_an)
-# A negative external current to the anode should lead ot Li+ ions traveling from the anode 
+# A positive external current to the anode should lead ot Li+ ions traveling from the anode 
 #   to the cathode. In this case, there should be a potential drop due to the ohmic resistance
 #   which would make Phi_el_ca < Ph_el_an and therefore Delta_Phi_sep < 0.
-# Long way of saying Delta_Phi_sep should have the same sign as i_ext
-Delta_Phi_sep = i_ex*t_sep/sigma_sep # Potential drop across the seperator [V]
+# Long way of saying Delta_Phi_sep should have the opposite sign as i_ext
+Delta_Phi_sep = -i_ex*t_sep/sigma_sep # Potential drop across the seperator [V]
 
 ## Whole Cell
 # Phi_ca - Phi_el_ca = Delta_Phi_dl_ca  
@@ -257,7 +260,7 @@ fig1, (ax1, ax2) = plt.subplots(2)
 ax1.plot(time,i_dl_an,'.-', color='firebrick')
 ax1.plot(time, i_ex/A_sg_an, linewidth=4, color='deepskyblue')
 ax1.plot(time,i_far_an, color='black')
-ax1.set_ylim((-2*max(abs(i_external))/A_sg_an ,1.5*max(abs(i_external))/A_sg_an))
+#ax1.set_ylim((-2*max(abs(i_external))/A_sg_an ,1.5*max(abs(i_external))/A_sg_an))
 ax1.set_title("Current in the Anode")
 ax1.set_xlabel("time [s]")
 ax1.set_ylabel("Current [A/m^2]")
@@ -267,7 +270,7 @@ ax1.legend(['DL','EXT','FAR'], bbox_to_anchor=(1, 0.5), loc = 'center left')
 ax2.plot(time,i_dl_ca,'.-', color='firebrick')
 ax2.plot(time, i_ex/A_sg_ca, linewidth=4, color='deepskyblue')
 ax2.plot(time,i_far_ca, color='black')
-ax2.set_ylim((-2*max(abs(i_external))/A_sg_an ,1.5*max(abs(i_external))/A_sg_an))
+#ax2.set_ylim((-2*max(abs(i_external))/A_sg_an ,1.5*max(abs(i_external))/A_sg_an))
 ax2.set_title("Current in the Cathode")
 ax2.set_xlabel("time [s]")
 ax2.set_ylabel("Current [A/m^2]")

@@ -136,7 +136,7 @@ def residual(_,SV,i_ext,Anode,Cathode):
     Eta_a = Phi_a - Phi_el_a - U_a ; Phi_an = 0 ; Phi_a - Phi_el_a = delta_Phi_dl_a
     Eta_a = delta_Phi_dl_a - U_a => sub into Butler Volmer
     i_ext/A_sg = i_dl_a + i_far_a ; -i_dl_a = Cap_dl_a*(d Delta_Phi_dl_a/ dt) 
-    (i_far_a - i_ext/A_sg)/Cap_dl_a = d Delta_Phi_dl_a/dt
+    (-i_far_a + i_ext/A_sg)/Cap_dl_a = d Delta_Phi_dl_a/dt
 
     Change in Lithium concentration in the Anode [1]:
     dN_Li/dt = -s_dot_Li+*A_surf*N_p ; dC_Li/dt = (dN_Li/dt)/(Vol*N_p) ; s_dot_Li+ = -i_far*nu_Li+/(n*F) ; A_suf/Vol = A_s
@@ -145,8 +145,8 @@ def residual(_,SV,i_ext,Anode,Cathode):
     Change in Double Layer potential Cathode [2]: 
     Eta_c = Phi_c - Phi_el_c - U_c ; Phi_c - Phi_el_c = delta_Phi_dl_c 
     Eta_c = delta_Phi_dl_a - U_c => sub into Butler Volmer
-    -i_ext/A_sg = i_dl_c + i_far_c ; -i_dl_c = Cap_dl_c*(d Delta_Phi_c_dl/ dt) 
-    (i_far_c + i_ext/A_sg)/Cap_dl_c = d Delta_Phi_c_dl/dt
+    -i_ext/A_sg = i_dl_c + i_far_c ; i_dl_c = Cap_dl_c*(d Delta_Phi_c_dl/ dt) 
+    (-i_far_c - i_ext/A_sg)/Cap_dl_c = d Delta_Phi_c_dl/dt
     
     Change in Lithium concentration in the Cathode [3]:
     dC_Li/dt = i_far*nu_Li+*A_s/(n*F)
@@ -170,7 +170,7 @@ def residual(_,SV,i_ext,Anode,Cathode):
     U_a = Half_Cell_Eqlib_Potential(Anode)
     i_far_a= Butler_Volmer(Anode.i_o,V_a,U_a,Anode.BnF_RT_an,Anode.BnF_RT_ca)
    
-    dPhi_dl_a_dt = (i_far_a - i_ext/Anode.A_sg)/Anode.Cap  # returns an expression for d Delta_Phi_dl/dt in terms of Delta_Phi_dl
+    dPhi_dl_a_dt = (-i_far_a + i_ext/Anode.A_sg)/Anode.Cap  # returns an expression for d Delta_Phi_dl/dt in terms of Delta_Phi_dl
     dC_Li_a_dt = i_far_a*Anode.nuA_nF # returns an expression for dC_Li/dt in terms of Delta_Phi_dl
     
     # Cathode
@@ -183,7 +183,7 @@ def residual(_,SV,i_ext,Anode,Cathode):
     U_c = Half_Cell_Eqlib_Potential(Cathode)
     i_far_c = Butler_Volmer(Cathode.i_o,V_c,U_c,Cathode.BnF_RT_an,Cathode.BnF_RT_ca)
     
-    dPhi_dl_c_dt = (i_far_c + i_ext/Cathode.A_sg)/Cathode.Cap
+    dPhi_dl_c_dt = (-i_far_c - i_ext/Cathode.A_sg)/Cathode.Cap
     dC_Li_c_dt = i_far_c*Cathode.nuA_nF
 
     dSVdt = [dPhi_dl_a_dt, dC_Li_a_dt, dPhi_dl_c_dt, dC_Li_c_dt]
