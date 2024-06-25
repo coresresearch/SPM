@@ -307,9 +307,9 @@ ax5.set_ylabel("Lithium [mol/m^2]")
 
 # Concentration of Lithium
 ax6.plot(time,C_Li_an/Anode.C_int[Anode.ind_track])
-ax6.plot(time,C_Li_ca/Anode.C_int[Anode.ind_track])
-ax6.plot(time,np.ones_like(C_Li_ca),'--','r')
-ax6.plot(time,np.zeros_like(C_Li_ca),'--','r')
+ax6.plot(time,C_Li_ca/Cathode.C_int[Anode.ind_track])
+ax6.plot(time,np.ones_like(C_Li_ca),'r--')
+ax6.plot(time,np.zeros_like(C_Li_ca),'r--')
 ax6.legend(['Anode','Cathode'], bbox_to_anchor=(1, 0.5),loc = 'center left')
 ax6.set_title("Concentration of Lithium")
 ax6.set_xlabel("time [s]")
