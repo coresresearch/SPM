@@ -31,7 +31,7 @@ def Half_Cell_Eqlib_Potential(HalfCell,F = 96485.34, T_amb = 298.15, R = 8.3145)
 
     U_0_Cell_amb =  -Delta_G_cell/(n_elc*F) # Standard half cell equalibrium potential
     U_0_Cell = U_0_Cell_amb + (T- T_amb)*Delta_S/(n_elc*F) # Adjust for temperature
-    U_Cell = U_0_Cell - R*T/n_elc/F*np.log(np.prod(np.power(HalfCell.C,HalfCell.nu))) # adjust for concentration
+    U_Cell = U_0_Cell - R*T/n_elc/F*np.log(np.prod(np.power(HalfCell.activity,HalfCell.nu))) # adjust for concentration
     return U_Cell
 
 
@@ -81,15 +81,18 @@ class Participant(Species):
     Subclass of Species
     Takes in the Species, stoichiometric coefficient, and concentration
     """
-    def __init__(self, Species, stoichiometric_coefficient, concentration):
+    def __init__(self, Species, stoichiometric_coefficient, concentration, activity_coefficient):
         super().__init__(Species.name, Species.DG_f, Species.S, Species.C_int ,Species.charge)
         self.stoich_coeff = stoichiometric_coefficient # Takes in the magnitude, the sign is added when creating a Half Cell
         self.C = concentration             # [mol/m^3]
+        self.gamma =activity_coefficient   # [-]
 
 class Half_Cell:
     """
     Takes in the reactants, products, number of electrons per mol of reaction, and the temerature of the half cell in Kelvin
     Stores each property in an array where the reactants are followed by the products
+    
+    Activity is the activity coefficient gamma multiplied by the effective concentraion 
     """
     def __init__(self,Reactants,Products,n,Temperature,Beta,F,R,Cap,i_o,A_sg,A_s,Species_Tracked,ion):
         self.n = n
@@ -97,36 +100,43 @@ class Half_Cell:
         self.BnF_RT_an = Beta*n*F/R/Temperature
         self.BnF_RT_ca = (1-Beta)*n*F/R/Temperature
         self.Cap = Cap
-        self.i_o = i_o
+        self.i_o_reff = i_o
         self.A_sg = A_sg
+        self.Beta = Beta
         
         indx = 0
         self.name = [None]*(len(Reactants)+len(Products))
         self.G = [None]*(len(Reactants)+len(Products))
         self.S = [None]*(len(Reactants)+len(Products))
-        self.C = [None]*(len(Reactants)+len(Products))
         self.nu = [None]*(len(Reactants)+len(Products))
         self.C_int = [None]*(len(Reactants)+len(Products))
+        self.activity = [None]*(len(Reactants)+len(Products))
+        self.gamma = [None]*(len(Reactants)+len(Products))
         for i in Reactants:
             self.name[indx] = i.name
             self.G[indx] = i.DG_f
             self.S[indx] = i.S
-            self.C[indx] = i.C
             self.nu[indx] = i.stoich_coeff*-1
             self.C_int[indx] = i.C_int
+            self.gamma[indx] = i.gamma
+            self.activity[indx] = i.gamma*(i.C/i.C_int)
             indx = indx + 1
         for i in Products:
             self.name[indx] = i.name
             self.G[indx] = i.DG_f
             self.S[indx] = i.S
-            self.C[indx] = i.C
             self.nu[indx] = i.stoich_coeff
             self.C_int[indx] = i.C_int
+            self.gamma[indx] = i.gamma
+            self.activity[indx] = i.gamma*(i.C/i.C_int)
             indx = indx + 1
+        # I need to rename these to match the convention of oxidize and reduced, but I am not
+        #   positive I have that correct to I am keeping it this way for now. 
         self.ind_track = self.name.index(Species_Tracked)
+        self.ind_ion = self.name.index(ion)
         # I no longer force this to be postive. The coeff of th ion is automatically set, but the 
         #   value for n if determed by the user since I do not include the elctron as a species in the reaction
-        self.nuA_nF = self.nu[self.name.index(ion)]*A_s/n/F
+        self.nuA_nF = self.nu[self.ind_ion]*A_s/n/F
 
 def residual(_,SV,i_ext,Anode,Cathode):
     '''
@@ -159,16 +169,24 @@ def residual(_,SV,i_ext,Anode,Cathode):
     # I hard code in the positions for the empty electrode in this reaction. Since I use the reaction
     #   Lithiated_Electrode -> Li+ + Electrode + e- for both half cells, the empty elcetrode is the last partcipant in 
     #   the list in both HCs
+    # I adjust the exchange current densities for concentration 
+    # I use mole fractions in place of activites when adjusting for concentration with the Open Cell Potential
      
     # Anode
     V_a = SV[0]
     
-    C_Li_a = SV[1]/Anode.C_int[Anode.ind_track]
-    Anode.C[Anode.ind_track] = C_Li_a
-    Anode.C[-1] = 1. - C_Li_a
+    X_Li_a = SV[1]/Anode.C_int[Anode.ind_track] # effective molar concentration of Lithium (LiC6) in the anode [-]
+    Anode.activity[Anode.ind_track] = Anode.gamma[Anode.ind_track]*(X_Li_a) # update activity of the LiC6
+    Anode.activity[-1] = Anode.gamma[-1]*(1 - X_Li_a) # update activity of the C6
+    # The activity of the Li+ in the electroltye does not change because I am assuming the concentration is constant
+    
+    # Adjust exchange current density for concentration
+    #   uses effective molar concentration which is activity/activity_coefficient 
+    i_o_an = ((X_Li_a)**Anode.Beta)*(
+        (Anode.activity[Anode.ind_ion]/Anode.gamma[Anode.ind_ion])**(1-Anode.Beta))*Anode.i_o_reff
     
     U_a = Half_Cell_Eqlib_Potential(Anode)
-    i_far_a= Butler_Volmer(Anode.i_o,V_a,U_a,Anode.BnF_RT_an,Anode.BnF_RT_ca)
+    i_far_a= Butler_Volmer(i_o_an,V_a,U_a,Anode.BnF_RT_an,Anode.BnF_RT_ca)
    
     dPhi_dl_a_dt = (-i_far_a + i_ext/Anode.A_sg)/Anode.Cap  # returns an expression for d Delta_Phi_dl/dt in terms of Delta_Phi_dl
     dC_Li_a_dt = i_far_a*Anode.nuA_nF # returns an expression for dC_Li/dt in terms of Delta_Phi_dl
@@ -176,12 +194,17 @@ def residual(_,SV,i_ext,Anode,Cathode):
     # Cathode
     V_c = SV[2]
     
-    C_Li_c = SV[3]/Cathode.C_int[Cathode.ind_track]
-    Cathode.C[Cathode.ind_track] = C_Li_c
-    Cathode.C[-1] = 1. - C_Li_c
+    X_Li_c = SV[3]/Cathode.C_int[Cathode.ind_track] # effective molar concentration of Lithium (LiFePO4) in the cathode [-]
+    Cathode.activity[Cathode.ind_track] = Cathode.gamma[Cathode.ind_track]*(X_Li_c) # update activity of the LiFePO4
+    Cathode.activity[-1] = Cathode.gamma[-1]*(1 - X_Li_c) # update activity of the FePO4
+    
+    # Adjust exchange current density for concentration 
+    #   uses effective molar concentration which is also the activity/activity_coefficient 
+    i_o_ca = ((X_Li_c)**Cathode.Beta)*(
+        (Cathode.activity[Cathode.ind_ion]/Cathode.gamma[Cathode.ind_ion])**(1-Cathode.Beta))*Cathode.i_o_reff
     
     U_c = Half_Cell_Eqlib_Potential(Cathode)
-    i_far_c = Butler_Volmer(Cathode.i_o,V_c,U_c,Cathode.BnF_RT_an,Cathode.BnF_RT_ca)
+    i_far_c = Butler_Volmer(i_o_ca,V_c,U_c,Cathode.BnF_RT_an,Cathode.BnF_RT_ca)
     
     dPhi_dl_c_dt = (-i_far_c - i_ext/Cathode.A_sg)/Cathode.Cap
     dC_Li_c_dt = i_far_c*Cathode.nuA_nF
