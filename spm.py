@@ -37,14 +37,14 @@ X_Li_max = 0.99 # Lithium mole fraction in an electrode at which to terminate th
 
 # Operating Conditions
 # If there is more than one external current the simulation will run back to back
-i_external = np.array([0, 2000, -3000, 1000,-500]) # external current into the Anode [A/m^2] 
-t_sim_max = [5,15,5,30,10] # the maximum time the battery will be held at each current [s]
+i_external = np.array([0,2000,0]) # external current into the Anode [A/m^2] 
+t_sim_max = [.1,70,1] # the maximum time the battery will be held at each current [s]
 T = 298.15 # standard temperature [K]
 
 # Initial Conditions
-Phi_dl_0_an = -0.45 # initial value for Phi_dl for the Anode [V]
+Phi_dl_0_an = -0.64 # initial value for Phi_dl for the Anode [V]
 X_Li_0_an = 0.35 # Initial Mole Fraction of the Anode for Lithium [-]
-Phi_dl_0_ca = 0.5 # initial value for Phi_dl for the Cathode [V]
+Phi_dl_0_ca = 0.321 # initial value for Phi_dl for the Cathode [V]
 X_Li_0_ca = 0.72 # Initial Mole Fraction of the Cathode for Lithium [-]
 
 # Material parameters:
@@ -52,12 +52,19 @@ MW_g = 12 # Molectular Weight of Graphite [g/mol]
 rho_g = 2.2e6 # Denstity of graphite [g/m^3]
 MW_FePO4 = 150.815 # Molectular Weight of iron phosphate [g/mol]
 rho_FePO4 = 2.87e6 # Denstity of iron phosphate [g/m^3]
-C_Li_plus = 1000 # Concentration of Li+ in the Electrolyte [mol/m^2] (I assume electrolyte transport is fast)
+C_Li_plus = 1000 # Concentration of Li+ in the Electrolyte [mol/m^3] (I assume electrolyte transport is fast)
 C_std = 1000 # Standard Concentration [mol/m^3] (same as 1 M)
 sigma_sep = 1.2 # Ionic conductivity for the seperator [1/m-ohm] (this is concentration dependent but it is constant for now)
 
+# Activity Coefficients (All 1 for now)
+gamma_LiC6 = 1
+gamma_C6 = 1
+gamma_Li_plus = 1
+gamma_LiFePO4 = 1
+gamma_FePO4 = 1
+
 # Kinetic parameters (both electrodes have the same reaction for now)
-i_o = 120 # Exchange Current Density [A/m^2] 
+i_o_reff = 120 # Exchange Current Density [A/m^2] 
 Cap_dl = 6*10**-5 # Double Layer Capacitance [F/m^2]
 Beta = 0.5 # [-] Beta = (1 - Beta) in this case 
 # both Li+ and electrons are products in this reaction so they have postive coefficients
@@ -66,9 +73,9 @@ n = -1 # number of electrons multiplied by the charge of an electron [mol_electr
 
 # Microstructure
 t_sep =  1e-5 # thickness of the seperator [m]
-Delta_y_an = 25*10**-4 # Anode thickness [m]
+Delta_y_an = 25*10**-6 # Anode thickness [m]
 r_an = 5*10**-6 # Anode particle radius [m]
-Delta_y_ca = 50*10**-4 # Cathode thickness [m]
+Delta_y_ca = 50*10**-6 # Cathode thickness [m]
 r_ca = 5*10**-6 # Cathode particle radius [m]
 Epsilon_g = 0.65 # volume fraction fo graphite [-]
 
@@ -118,29 +125,29 @@ LiC6 = Species("LiC6",-230000,-11.2,C_g,0)
 C6 = Species("C",0,0,C_g,0)
 Li_plus = Species("Li+",-293300,49.7,C_std,1)
 
-LiC6_rxn_an = Participant(LiC6,1,C_Li_0_an)
-C6_rxn_an = Participant(C6,1,C_g_0_an)
-Li_plus_rxn_an = Participant(Li_plus,1,C_Li_plus)
+LiC6_rxn_an = Participant(LiC6,1,C_Li_0_an,gamma_LiC6)
+C6_rxn_an = Participant(C6,1,C_g_0_an,gamma_C6)
+Li_plus_rxn_an = Participant(Li_plus,1,C_Li_plus,gamma_Li_plus)
 
 React_an = [LiC6_rxn_an]
 Prod_an = [Li_plus_rxn_an,C6_rxn_an]
 
 # Both electrodes have the same reation and in this forward reaction one electron is 
 #   produced so n = 1 (as it is defined above in the inputs)
-Anode = Half_Cell(React_an,Prod_an,n,T,Beta,F,R,Cap_dl,i_o,A_sg_an,A_s_an,'LiC6','Li+')
+Anode = Half_Cell(React_an,Prod_an,n,T,Beta,F,R,Cap_dl,i_o_reff,A_sg_an,A_s_an,'LiC6','Li+')
 
 # Cathode reacation: LiFePO4 -> FePO4 + Li+ + e-
 LiFePO4 = Species("LiFePO4",-326650,130.95,C_FePO4,0)
 FePO4 = Species("FePO4",0,171.3,C_FePO4,0)
 
-LiFePO4_rxn_ca = Participant(LiFePO4,1,C_Li_0_ca)
-FePO4_rxn_ca = Participant(FePO4,1,C_FePO4_0)
-Li_plus_rxn_ca = Participant(Li_plus,1,C_Li_plus)
+LiFePO4_rxn_ca = Participant(LiFePO4,1,C_Li_0_ca,gamma_LiFePO4)
+FePO4_rxn_ca = Participant(FePO4,1,C_FePO4_0,gamma_FePO4)
+Li_plus_rxn_ca = Participant(Li_plus,1,C_Li_plus,gamma_Li_plus)
 
 React_ca = [LiFePO4_rxn_ca]
 Prod_ca = [Li_plus_rxn_ca,FePO4_rxn_ca]
 
-Cathode = Half_Cell(React_ca,Prod_ca,n,T,Beta,F,R,Cap_dl,i_o,A_sg_ca,A_s_ca,'LiFePO4','Li+')
+Cathode = Half_Cell(React_ca,Prod_ca,n,T,Beta,F,R,Cap_dl,i_o_reff,A_sg_ca,A_s_ca,'LiFePO4','Li+')
 
 '''
 Integration
@@ -208,25 +215,35 @@ Post Processing
 ## Anode LiC6 -> Li+ + C6 + e- 
 U_cell_an = np.zeros_like(sim_outputs[0])
 i_far_an = np.zeros_like(sim_outputs[0])
+i_o_an = np.zeros_like(sim_outputs[0])
 for ind, ele in enumerate(Delta_Phi_dl_an):
     # I find open cell potential and faradic current using the same process as the residual function
-    Anode.C[0] = C_Li_an[ind]/Anode.C_int[0]
-    Anode.C[-1] = 1. - Anode.C[0]
+    X_Li_a = C_Li_an[ind]/Anode.C_int[Anode.ind_track] 
+    Anode.activity[Anode.ind_track] = Anode.gamma[Anode.ind_track]*(X_Li_a) 
+    Anode.activity[-1] = Anode.gamma[-1]*(1 - X_Li_a) 
     U_cell_an[ind] = Half_Cell_Eqlib_Potential(Anode) # Open Cell Potential [V]
     
-    i_far_an[ind] = faradaic_current(i_o,sim_outputs[0,ind],U_cell_an[ind],Anode.BnF_RT_an,Anode.BnF_RT_ca) # Faradaic Current [A/m^2]
+    i_o_an[ind] = ((X_Li_a)**Anode.Beta)*(
+        (Anode.activity[Anode.ind_ion]/Anode.gamma[Anode.ind_ion])**(1-Anode.Beta))*Anode.i_o_reff
+    
+    i_far_an[ind] = faradaic_current(i_o_an[ind],sim_outputs[0,ind],U_cell_an[ind],Anode.BnF_RT_an,Anode.BnF_RT_ca) # Faradaic Current [A/m^2]
 
 i_dl_an = i_ex/A_sg_an - i_far_an # Double Layer current [A/m^2]
 
 ## Cathode LiFePO4 -> FePO4 + Li+ + e-
 U_cell_ca = np.zeros_like(sim_outputs[0])
 i_far_ca = np.zeros_like(sim_outputs[0])
+i_o_ca = np.zeros_like(sim_outputs[0])
 for ind, ele in enumerate(Delta_Phi_dl_ca):
-    Cathode.C[0] = C_Li_ca[ind]/Cathode.C_int[0]
-    Cathode.C[-1] = 1. - Cathode.C[0]
-    U_cell_ca[ind] = Half_Cell_Eqlib_Potential(Cathode) # Open Cell Potential [V]   
+    X_Li_c = C_Li_ca[ind]/Cathode.C_int[Cathode.ind_track]
+    Cathode.activity[Cathode.ind_track] = Cathode.gamma[Cathode.ind_track]*(X_Li_c)
+    Cathode.activity[-1] = Cathode.gamma[-1]*(1 - X_Li_c)
+    U_cell_ca[ind] = Half_Cell_Eqlib_Potential(Cathode) # Open Cell Potential [V]  
     
-    i_far_ca[ind] = faradaic_current(i_o,sim_outputs[2,ind],U_cell_ca[ind],Cathode.BnF_RT_an,Cathode.BnF_RT_ca) # Faradaic Current [A/m^2]
+    i_o_ca[ind] = ((X_Li_c)**Cathode.Beta)*(
+        (Cathode.activity[Cathode.ind_ion]/Cathode.gamma[Cathode.ind_ion])**(1-Cathode.Beta))*Cathode.i_o_reff 
+    
+    i_far_ca[ind] = faradaic_current(i_o_ca[ind],sim_outputs[2,ind],U_cell_ca[ind],Cathode.BnF_RT_an,Cathode.BnF_RT_ca) # Faradaic Current [A/m^2]
     
 i_dl_ca = -i_ex/A_sg_ca - i_far_ca # Double Layer current [A/m^2]
 
@@ -295,7 +312,7 @@ ax4.set_ylabel("Equilibrium Potential [V]")
 ax4.legend(['Anode','Cathode'], loc = 'best')
 fig2.tight_layout()
 
-fig3, (ax5, ax6) = plt.subplots(2)
+fig3, (ax5, ax6, ax7) = plt.subplots(3)
 # Amount of Lithium
 ax5.plot(time,mol_an)
 ax5.plot(time,mol_ca)
@@ -305,15 +322,25 @@ ax5.set_title("Amount of Lithium")
 ax5.set_xlabel("time [s]")
 ax5.set_ylabel("Lithium [mol/m^2]")
 
-# Concentration of Lithium
+# Mole fraction of Lithium
 ax6.plot(time,C_Li_an/Anode.C_int[Anode.ind_track])
 ax6.plot(time,C_Li_ca/Cathode.C_int[Anode.ind_track])
 ax6.plot(time,np.ones_like(C_Li_ca),'r--')
 ax6.plot(time,np.zeros_like(C_Li_ca),'r--')
 ax6.legend(['Anode','Cathode'], bbox_to_anchor=(1, 0.5),loc = 'center left')
-ax6.set_title("Concentration of Lithium")
+ax6.set_title("Effective Concentration of Lithium")
 ax6.set_xlabel("time [s]")
-ax6.set_ylabel("Lithium [mol/m^3]")
+ax6.set_ylabel("Lithium [-]")
+
+# Concentration of Lithium
+ax7.plot(time,C_Li_an)
+ax7.plot(time,C_Li_ca)
+ax7.plot(time,np.zeros_like(C_Li_ca),'r--')
+ax7.legend(['Anode','Cathode'], bbox_to_anchor=(1, 0.5),loc = 'center left')
+ax7.set_title("Concentration of Lithium")
+ax7.set_xlabel("time [s]")
+ax7.set_ylabel("Lithium [mol/m^3]")
+
 fig3.tight_layout()
 
 # Cell Voltage
@@ -327,5 +354,26 @@ plt.title("Cell Voltage")
 plt.xlabel("time [s]")
 plt.ylabel("Voltage [V]")
 plt.tight_layout()
+
+# Overpotential
+fig4, (ax8, ax9) = plt.subplots(2)
+ax8.plot(time,Delta_Phi_dl_an-U_cell_an)
+ax8.plot(time,(Delta_Phi_dl_ca-U_cell_ca))
+ax8.plot(time,np.zeros_like(time),':r')
+ax8.legend(['Anode','Cathode'], bbox_to_anchor=(1, 0.5),loc = 'center left')
+ax8.set_title("Electrode Overpotential")
+ax8.set_xlabel("time [s]")
+ax8.set_ylabel("Overpotential [V]")
+
+#Exchange Current Density
+ax9.plot(time,i_o_an)
+ax9.plot(time,i_o_ca)
+ax9.plot(time,np.zeros_like(time),':r')
+ax9.legend(['Anode','Cathode'], bbox_to_anchor=(1, 0.5),loc = 'center left')
+ax9.set_title("Exchange Current Density")
+ax9.set_xlabel("time [s]")
+ax9.set_ylabel(r'$i_o [A/m^2]$')
+
+fig4.tight_layout()
 
 plt.show()
