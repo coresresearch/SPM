@@ -212,3 +212,29 @@ def residual(_,SV,i_ext,Anode,Cathode):
     dSVdt = [dPhi_dl_a_dt, dC_Li_a_dt, dPhi_dl_c_dt, dC_Li_c_dt]
     
     return dSVdt
+
+def residual_single(_,SV,i_ext,Anode):
+    '''
+    Same as the other residual function, but pared down for one electrode 
+    '''
+    # Anode
+    V_a = SV[0]
+    
+    X_Li_a = SV[1]/Anode.C_int[Anode.ind_track] # effective molar concentration of Lithium (LiC6) in the anode [-]
+    Anode.activity[Anode.ind_track] = Anode.gamma[Anode.ind_track]*(X_Li_a) # update activity of the LiC6
+    Anode.activity[-1] = Anode.gamma[-1]*(1 - X_Li_a) # update activity of the C6
+    # The activity of the Li+ in the electroltye does not change because I am assuming the concentration is constant
+    
+    # Adjust exchange current density for concentration
+    i_o_an = ((X_Li_a)**Anode.Beta)*(
+        (Anode.activity[Anode.ind_ion]/Anode.gamma[Anode.ind_ion])**(1-Anode.Beta))*Anode.i_o_reff
+    
+    U_a = Half_Cell_Eqlib_Potential(Anode)
+    i_far_a= Butler_Volmer(i_o_an,V_a,U_a,Anode.BnF_RT_an,Anode.BnF_RT_ca)
+   
+    dPhi_dl_a_dt = (-i_far_a + i_ext/Anode.A_sg)/Anode.Cap  # returns an expression for d Delta_Phi_dl/dt in terms of Delta_Phi_dl
+    dC_Li_a_dt = i_far_a*Anode.nuA_nF # returns an expression for dC_Li/dt in terms of Delta_Phi_dl
+    
+    dSVdt = [dPhi_dl_a_dt, dC_Li_a_dt]
+    
+    return dSVdt

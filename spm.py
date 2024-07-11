@@ -37,15 +37,15 @@ X_Li_max = 0.99 # Lithium mole fraction in an electrode at which to terminate th
 
 # Operating Conditions
 # If there is more than one external current the simulation will run back to back
-i_external = np.array([0,2000,0]) # external current into the Anode [A/m^2] 
-t_sim_max = [.1,70,1] # the maximum time the battery will be held at each current [s]
+i_external = np.array([0]) # external current into the Anode [A/m^2] 
+t_sim_max = [1e-7] # the maximum time the battery will be held at each current [s]
 T = 298.15 # standard temperature [K]
 
 # Initial Conditions
 Phi_dl_0_an = -0.64 # initial value for Phi_dl for the Anode [V]
 X_Li_0_an = 0.35 # Initial Mole Fraction of the Anode for Lithium [-]
-Phi_dl_0_ca = 0.321 # initial value for Phi_dl for the Cathode [V]
-X_Li_0_ca = 0.72 # Initial Mole Fraction of the Cathode for Lithium [-]
+Phi_dl_0_ca = 0.3 #0.321 # initial value for Phi_dl for the Cathode [V]
+X_Li_0_ca = 0.1 # Initial Mole Fraction of the Cathode for Lithium [-]
 
 # Material parameters:
 MW_g = 12 # Molectular Weight of Graphite [g/mol]
@@ -297,7 +297,7 @@ fig1.tight_layout()
 fig2, (ax3, ax4) = plt.subplots(2)
 # Double Layer Potential Difference 
 ax3.plot(time,Delta_Phi_dl_an)
-ax3.plot(time,sim_outputs[2])
+ax3.plot(time,Delta_Phi_dl_ca)
 ax3.set_title(r"$\Delta\Phi_{dl}$")
 ax3.set_xlabel("time [s]")
 ax3.set_ylabel("Change in Potential [V]")
@@ -346,7 +346,7 @@ fig3.tight_layout()
 # Cell Voltage
 plt4 = plt.figure(4)
 plt.plot(time,Delta_Phi_dl_an,'--')
-plt.plot(time,sim_outputs[2],'--')
+plt.plot(time,Delta_Phi_dl_ca,'--')
 plt.plot(time,Delta_Phi_sep,'--')
 plt.plot(time,V_cell)
 plt.legend([r'$\Delta\Phi_{dl,a}$',r'$\Delta\Phi_{dl,c}$',r'$\Delta\Phi_{sep}$', r'$V_{cell}$'], bbox_to_anchor=(1, 0.5),loc = 'center left')
@@ -375,5 +375,12 @@ ax9.set_xlabel("time [s]")
 ax9.set_ylabel(r'$i_o [A/m^2]$')
 
 fig4.tight_layout()
+
+fig5, (ax10,ax11) = plt.subplots(2)
+ax10.plot(time,C_Li_ca)
+ax10.set_title("Concentration of Lithium")
+ax11.plot(time,C_Li_ca/Cathode.C_int[Anode.ind_track])
+ax11.set_title("Effective Concentration of Lithium")
+fig5.tight_layout()
 
 plt.show()
