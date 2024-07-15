@@ -94,7 +94,10 @@ class Half_Cell:
     
     Activity is the activity coefficient gamma multiplied by the effective concentraion 
     """
-    def __init__(self,Reactants,Products,n,Temperature,Beta,F,R,Cap,i_o,A_sg,A_s,Species_Tracked,ion):
+    def __init__(self,Reactants,Products,n,Temperature,Beta,F,R,Cap,i_o,A_sg,A_s,Species_Tracked,ion,
+                 D_k):
+        # Cap: Double layer capacitance
+        # D_k: Diffusion coefficient
         self.n = n
         self.Temp = Temperature
         self.BnF_RT_an = Beta*n*F/R/Temperature
@@ -103,6 +106,7 @@ class Half_Cell:
         self.i_o_reff = i_o
         self.A_sg = A_sg
         self.Beta = Beta
+        self.D_k = D_k
         
         indx = 0
         self.name = [None]*(len(Reactants)+len(Products))
@@ -138,7 +142,27 @@ class Half_Cell:
         #   value for n if determed by the user since I do not include the elctron as a species in the reaction
         self.nuA_nF = self.nu[self.ind_ion]*A_s/n/F
 
-def residual(_,SV,i_ext,Anode,Cathode):
+class internal_electrode_geom:
+    '''
+    Contains the geometry for the radial discritization for the Electrode
+    
+    Radial nodes are in the middle of each shell volume
+    
+    The first index is r = 0, index n is r = r_o
+    '''
+    # I uses equally spaced radial points
+    def __init__(self,r_p,n_r):
+        self.r_p = r_p # radius of the particle 
+        self.n_r = n_r # number of radial nodes
+        self.dr = r_p/n_r # distance between nodes
+        
+        self.r_shell = np.arange(n_r+1)*r_p/n_r # radi of each shell [m]
+        self.A_shell = 4*np.pi*(self.r_shell**2) # surface area of each shell [m^2]
+        self.diff_vol = (4/3)*np.pi*(self.r_shell[1:]**3 - self.r_shell[:-1]**3) # volume between each pair of shells (one volume per node) [m^3]
+        
+        self.r_node =  (self.r_shell[:-1] + self.r_shell[1:])/2 # radi of each node [m]
+           
+def residual(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca):
     '''
     Derivations (a=anode,s=sperator,c=cathode)
 
@@ -173,9 +197,10 @@ def residual(_,SV,i_ext,Anode,Cathode):
     # I use mole fractions in place of activites when adjusting for concentration with the Open Cell Potential
      
     # Anode
-    V_a = SV[0]
+    Phi_dl_an = SV[0]
+    C_an =  SV[1:Geom_an.n_r+1] # Lithium concentration in the anode
     
-    X_Li_a = SV[1]/Anode.C_int[Anode.ind_track] # effective molar concentration of Lithium (LiC6) in the anode [-]
+    X_Li_a = C_an[-1]/Anode.C_int[Anode.ind_track] # effective molar concentration of Lithium (LiC6) in the anode [-]
     Anode.activity[Anode.ind_track] = Anode.gamma[Anode.ind_track]*(X_Li_a) # update activity of the LiC6
     Anode.activity[-1] = Anode.gamma[-1]*(1 - X_Li_a) # update activity of the C6
     # The activity of the Li+ in the electroltye does not change because I am assuming the concentration is constant
@@ -186,15 +211,22 @@ def residual(_,SV,i_ext,Anode,Cathode):
         (Anode.activity[Anode.ind_ion]/Anode.gamma[Anode.ind_ion])**(1-Anode.Beta))*Anode.i_o_reff
     
     U_a = Half_Cell_Eqlib_Potential(Anode)
-    i_far_a= Butler_Volmer(i_o_an,V_a,U_a,Anode.BnF_RT_an,Anode.BnF_RT_ca)
+    i_far_a= Butler_Volmer(i_o_an,Phi_dl_an,U_a,Anode.BnF_RT_an,Anode.BnF_RT_ca)
    
     dPhi_dl_a_dt = (-i_far_a + i_ext/Anode.A_sg)/Anode.Cap  # returns an expression for d Delta_Phi_dl/dt in terms of Delta_Phi_dl
-    dC_Li_a_dt = i_far_a*Anode.nuA_nF # returns an expression for dC_Li/dt in terms of Delta_Phi_dl
+    s_dot_an = i_far_a*Anode.nuA_nF/(3/Geom_an.r_p) # species production rate at the surface as a result of i_far
+    
+    N_r_Li_an =  radial_molar_flux(Anode, Geom_an, C_an, s_dot_an)
+    # Flux in minus flux out (closer to center minus closer to surface)
+    dN_r_Li_an_dt = np.subtract(np.transpose(N_r_Li_an[:-1])*Geom_an.A_shell[:-1] , np.transpose(N_r_Li_an[1:])*Geom_an.A_shell[1:])
+    # Divide by the volume to the get the concentration rate
+    dC_Li_a_dt = np.transpose(dN_r_Li_an_dt)/Geom_an.diff_vol
     
     # Cathode
-    V_c = SV[2]
+    Phi_dl_ca = SV[Geom_an.n_r+1]
+    C_ca =  SV[Geom_an.n_r+2:] # Lithium concentration in the anode
     
-    X_Li_c = SV[3]/Cathode.C_int[Cathode.ind_track] # effective molar concentration of Lithium (LiFePO4) in the cathode [-]
+    X_Li_c = C_ca[-1]/Cathode.C_int[Cathode.ind_track] # effective molar concentration of Lithium (LiFePO4) in the cathode [-]
     Cathode.activity[Cathode.ind_track] = Cathode.gamma[Cathode.ind_track]*(X_Li_c) # update activity of the LiFePO4
     Cathode.activity[-1] = Cathode.gamma[-1]*(1 - X_Li_c) # update activity of the FePO4
     
@@ -204,23 +236,30 @@ def residual(_,SV,i_ext,Anode,Cathode):
         (Cathode.activity[Cathode.ind_ion]/Cathode.gamma[Cathode.ind_ion])**(1-Cathode.Beta))*Cathode.i_o_reff
     
     U_c = Half_Cell_Eqlib_Potential(Cathode)
-    i_far_c = Butler_Volmer(i_o_ca,V_c,U_c,Cathode.BnF_RT_an,Cathode.BnF_RT_ca)
+    i_far_c = Butler_Volmer(i_o_ca,Phi_dl_ca,U_c,Cathode.BnF_RT_an,Cathode.BnF_RT_ca)
     
     dPhi_dl_c_dt = (-i_far_c - i_ext/Cathode.A_sg)/Cathode.Cap
-    dC_Li_c_dt = i_far_c*Cathode.nuA_nF
-
-    dSVdt = [dPhi_dl_a_dt, dC_Li_a_dt, dPhi_dl_c_dt, dC_Li_c_dt]
+    s_dot_ca = i_far_c*Cathode.nuA_nF/(3/Geom_ca.r_p) # species production rate at the surface as a result of i_far
+    
+    N_r_Li_ca =  radial_molar_flux(Cathode, Geom_ca, C_ca, s_dot_ca)
+    # Flux in minus flux out (closer to center minus closer to surface)
+    dN_r_Li_ca_dt = np.subtract(np.transpose(N_r_Li_ca[:-1])*Geom_ca.A_shell[:-1] , np.transpose(N_r_Li_ca[1:])*Geom_ca.A_shell[1:])
+    # Divide by the volume to the get the concentration rate
+    dC_Li_c_dt = np.transpose(dN_r_Li_ca_dt)/Geom_ca.diff_vol
+    
+    dSVdt = np.stack((dPhi_dl_a_dt, *dC_Li_a_dt, dPhi_dl_c_dt, *dC_Li_c_dt))
     
     return dSVdt
 
-def residual_single(_,SV,i_ext,Anode):
+def residual_single(_,SV,i_ext,Anode,Geom_an):
     '''
     Same as the other residual function, but pared down for one electrode 
     '''
     # Anode
-    V_a = SV[0]
+    Phi_dl_an = SV[0] # Double layer potential
+    C_an =  SV[1:Geom_an.n_r+1] # Lithium concentration in the anode
     
-    X_Li_a = SV[1]/Anode.C_int[Anode.ind_track] # effective molar concentration of Lithium (LiC6) in the anode [-]
+    X_Li_a = C_an[-1]/Anode.C_int[Anode.ind_track] # effective molar concentration of Lithium (LiC6) on the anode surface [-]
     Anode.activity[Anode.ind_track] = Anode.gamma[Anode.ind_track]*(X_Li_a) # update activity of the LiC6
     Anode.activity[-1] = Anode.gamma[-1]*(1 - X_Li_a) # update activity of the C6
     # The activity of the Li+ in the electroltye does not change because I am assuming the concentration is constant
@@ -230,11 +269,36 @@ def residual_single(_,SV,i_ext,Anode):
         (Anode.activity[Anode.ind_ion]/Anode.gamma[Anode.ind_ion])**(1-Anode.Beta))*Anode.i_o_reff
     
     U_a = Half_Cell_Eqlib_Potential(Anode)
-    i_far_a= Butler_Volmer(i_o_an,V_a,U_a,Anode.BnF_RT_an,Anode.BnF_RT_ca)
+    i_far_an= Butler_Volmer(i_o_an,Phi_dl_an,U_a,Anode.BnF_RT_an,Anode.BnF_RT_ca)
    
-    dPhi_dl_a_dt = (-i_far_a + i_ext/Anode.A_sg)/Anode.Cap  # returns an expression for d Delta_Phi_dl/dt in terms of Delta_Phi_dl
-    dC_Li_a_dt = i_far_a*Anode.nuA_nF # returns an expression for dC_Li/dt in terms of Delta_Phi_dl
+    dPhi_dl_a_dt = (-i_far_an + i_ext/Anode.A_sg)/Anode.Cap  # returns an expression for d Delta_Phi_dl/dt in terms of Delta_Phi_dl
+    s_dot_an = i_far_an*Anode.nuA_nF/(3/Geom_an.r_p) # species production rate at the surface as a result of i_far
+        
+    N_r_Li =  radial_molar_flux(Anode, Geom_an, C_an, s_dot_an)
+    #print(N_r_Li)
+    #breakpoint()
     
-    dSVdt = [dPhi_dl_a_dt, dC_Li_a_dt]
+    # Flux in minus flux out (closer to center minus closer to surface)
+    dN_r_Li_dt = np.subtract(np.transpose(N_r_Li[:-1])*Geom_an.A_shell[:-1] , np.transpose(N_r_Li[1:])*Geom_an.A_shell[1:])
+    
+    # Divide by the volume to the get the concentration rate
+    dC_Li_a_dt = np.transpose(dN_r_Li_dt)/Geom_an.diff_vol
+    
+    dSVdt = np.stack((dPhi_dl_a_dt, *dC_Li_a_dt))
     
     return dSVdt
+
+def radial_molar_flux(Electrode, Geometry, C, s_dot):
+    '''
+    C: Molar cocentrations at each node [mol/m^3]
+    s_dot: species production rate at the surface [mol/m^2-s]
+    '''
+    N_r_Li = np.zeros(Geometry.n_r+1)
+    
+    N_r_Li[0] = 0 # No flux at the center of the electrode
+    
+    N_r_Li[1:-1] = -Electrode.D_k*(np.subtract(C[1:],C[:-1]))/Geometry.dr
+
+    N_r_Li[-1] = -s_dot # Flux at the surface is equal and opposite to the production rate 
+    
+    return N_r_Li
