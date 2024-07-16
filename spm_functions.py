@@ -24,39 +24,23 @@ def Half_Cell_Eqlib_Potential(HalfCell,F = 96485.34, T_amb = 298.15, R = 8.3145)
     U_Cell : The equalibrium (open cell) potential for the half cell [V]
     """
     n_elc = HalfCell.n
-<<<<<<< HEAD
-<<<<<<< HEAD
     #T_amb = 273.15 + 25 [K]
-=======
     print("n",n_elc)
     #T_amb = 273.15 + 25 #[K]
->>>>>>> c026062 (merge fix some more)
-=======
     print("n",n_elc)
     #T_amb = 273.15 + 25 #[K]
-=======
     #T_amb = 273.15 + 25 [K]
->>>>>>> d28e340 (merge fix more)
->>>>>>> 516552e (merge fix some more)
     T = HalfCell.Temp
      
     Delta_G_cell = np.dot(HalfCell.G,HalfCell.nu) # Standard Gibbs Free Energy for the half cell reaction
     Delta_S = np.dot(HalfCell.S,HalfCell.nu) # Standard Entropy for the half cell reaction
 
-<<<<<<< HEAD
     U_0_Cell_amb =  -Delta_G_cell/(n_elc*F) # Standard half cell equalibrium potential
     U_0_Cell = U_0_Cell_amb + (T- T_amb)*Delta_S/(n_elc*F) # Adjust for temperature
     U_Cell = U_0_Cell - R*T/n_elc/F*np.log(np.prod(np.power(HalfCell.activity,HalfCell.nu))) # adjust for concentration
-=======
-    U_0_Cell_amb =  -Delta_G_cell/(n_elc*F)
-    U_0_Cell = U_0_Cell_amb + (T- T_amb)*Delta_S/(n_elc*F)
-    U_Cell = U_0_Cell - R*T/n_elc/F*np.log(np.prod(np.power(HalfCell.X,HalfCell.nu)))
->>>>>>> c026062 (merge fix some more)
     return U_Cell
 
-
 def Butler_Volmer(i_o,V,U,BnF_RT_a,BnF_RT_c):
->>>>>>> 474aa72 (Fixed areas, brought in BV function from before, adressed misc bugs)
     """
     This function calculates the faraday current density at the electrode-electrolyte interface, using the
     Butler-Volmer model (A/m2). Positive current is defined as positive current delivered from the electrolyte to the
@@ -64,14 +48,10 @@ def Butler_Volmer(i_o,V,U,BnF_RT_a,BnF_RT_c):
     
     Parameters
     ----------
-<<<<<<< HEAD
     i_o : Exchange Current Density [A/m^2] 
     V : Electrode potential difference at the electrode-electrolyte interface (phi_ed - phi_elyte) [V]
-=======
     i_o : Exchange Current Density [mA/cm^2] 
-<<<<<<< HEAD
     V : Electrode potential difference at the electrode-electrolyte interface [V]
->>>>>>> c026062 (merge fix some more)
     U : Equilibrium potential [V]
  
     Inside BnF_RT: a is for anodic, c is for cathodic
@@ -84,7 +64,6 @@ def Butler_Volmer(i_o,V,U,BnF_RT_a,BnF_RT_c):
     R : Universal gas constant
         8.3145 [J/mol-K]
     T : Temperature of the interface [K]  
-=======
     V : Electrode potential difference at the electrode-electrolyte interface (phi_ed - phi_elyte) [V]
     U : Equilibrium potential [V]
     T : Temperature of the interface [K]    
@@ -96,7 +75,6 @@ def Butler_Volmer(i_o,V,U,BnF_RT_a,BnF_RT_c):
         The default is 0.0083145 [kJ/mol-K]
      n: Optional, number of electrons
         The default is 1 [equivalence/mol]
->>>>>>> 516552e (merge fix some more)
         
     Returns
     -------
@@ -104,7 +82,6 @@ def Butler_Volmer(i_o,V,U,BnF_RT_a,BnF_RT_c):
     """
     i_far= i_o*(math.exp(-BnF_RT_a*(V-U)) - math.exp(BnF_RT_c*(V-U)))
     return i_far
->>>>>>> 474aa72 (Fixed areas, brought in BV function from before, adressed misc bugs)
 
 class Species:
     """
@@ -112,22 +89,14 @@ class Species:
     """
     def __init__(self, Name, Gibbs_energy_formation, Standard_Entropy,Standard_State,charge):
         self.name = Name
-<<<<<<< HEAD
         self.DG_f = Gibbs_energy_formation # [J/mol]
         self.S = Standard_Entropy          # [J/mol-K]
         self.C_int = Standard_State        # [mol/m^3]
         self.charge = charge               # [elementary charge]
-=======
-        self.DG_f = Gibbs_energy_formation
-        self.S = Standard_Entropy
-        self.state = Standard_State
-        self.charge = charge
->>>>>>> 516552e (merge fix some more)
 
 class Participant(Species):
     """
     Subclass of Species
-<<<<<<< HEAD
     Takes in the Species, stoichiometric coefficient, and concentration
     """
     def __init__(self, Species, stoichiometric_coefficient, concentration, activity_coefficient):
@@ -135,15 +104,7 @@ class Participant(Species):
         self.stoich_coeff = stoichiometric_coefficient # Takes in the magnitude, the sign is added when creating a Half Cell
         self.C = concentration             # [mol/m^3]
         self.gamma =activity_coefficient   # [-]
-=======
-    Takes in the Species, stoichiometric coefficient, and concentration   
-    """
-    def __init__(self, Species, stoichiometric_coefficient, concentration):
-        super().__init__(Species.name, Species.DG_f, Species.S, Species.state,Species.charge)
-        self.stioch_coeff = stoichiometric_coefficient
-        self.X = concentration
->>>>>>> 516552e (merge fix some more)
-
+        
 class Half_Cell:
     """
     Takes in the reactants, products, number of electrons per mol of reaction, and the temerature of the half cell in Kelvin
@@ -195,7 +156,6 @@ class Half_Cell:
         #   value for n if determed by the user since I do not include the elctron as a species in the reaction
         self.nuA_nF = self.nu[self.ind_ion]*A_s/n/F
 
-<<<<<<< HEAD
 def residual(_,SV,i_ext,Anode,Cathode):
     '''
     Derivations (a=anode,s=sperator,c=cathode)
@@ -270,5 +230,3 @@ def residual(_,SV,i_ext,Anode,Cathode):
     dSVdt = [dPhi_dl_a_dt, dC_Li_a_dt, dPhi_dl_c_dt, dC_Li_c_dt]
     
     return dSVdt
-=======
->>>>>>> c026062 (merge fix some more)
