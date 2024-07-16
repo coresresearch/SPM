@@ -182,8 +182,8 @@ def residual(_,SV,i_ext,Anode,Cathode):
     
     # Adjust exchange current density for concentration
     #   uses effective molar concentration which is activity/activity_coefficient 
-    i_o_an = ((X_Li_a)**Anode.Beta)*(
-        (Anode.activity[Anode.ind_ion]/Anode.gamma[Anode.ind_ion])**(1-Anode.Beta))*Anode.i_o_reff
+    i_o_an = ((Anode.activity[Anode.ind_track])**Anode.Beta)*(
+        (Anode.activity[Anode.ind_ion]*Anode.activity[-1])**(1-Anode.Beta))*Anode.i_o_reff
     
     U_a = Half_Cell_Eqlib_Potential(Anode)
     i_far_a= Butler_Volmer(i_o_an,V_a,U_a,Anode.BnF_RT_an,Anode.BnF_RT_ca)
@@ -200,8 +200,8 @@ def residual(_,SV,i_ext,Anode,Cathode):
     
     # Adjust exchange current density for concentration 
     #   uses effective molar concentration which is also the activity/activity_coefficient 
-    i_o_ca = ((X_Li_c)**Cathode.Beta)*(
-        (Cathode.activity[Cathode.ind_ion]/Cathode.gamma[Cathode.ind_ion])**(1-Cathode.Beta))*Cathode.i_o_reff
+    i_o_ca = ((Cathode.activity[Cathode.ind_track])**Cathode.Beta)*(
+        (Cathode.activity[Cathode.ind_ion]*Cathode.activity[-1])**(1-Cathode.Beta))*Cathode.i_o_reff 
     
     U_c = Half_Cell_Eqlib_Potential(Cathode)
     i_far_c = Butler_Volmer(i_o_ca,V_c,U_c,Cathode.BnF_RT_an,Cathode.BnF_RT_ca)

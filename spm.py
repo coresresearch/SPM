@@ -23,6 +23,7 @@ from spm_functions import Half_Cell_Eqlib_Potential, residual, Species, Particip
 # A positive current dose work so it is when the battery. This is when both reactions proceed spontaniously to reduce their 
 #   thermodynamic potenitals. This happens durring discharging when a postive external current enters the anode
 #   and Lithium ions go from the anode to the cathode.
+# For the exchange current density I am assuming the reference concentration is the concentration of the solid electrode material (FePO4 or C6)
 
 '''
 USER INPUTS
@@ -64,7 +65,7 @@ gamma_LiFePO4 = 1
 gamma_FePO4 = 1
 
 # Kinetic parameters (both electrodes have the same reaction for now)
-i_o_reff = 120 # Exchange Current Density [A/m^2] 
+i_o_reff = 120 # Exchange Current Density at a refference concentration [A/m^2] 
 Cap_dl = 6*10**-5 # Double Layer Capacitance [F/m^2]
 Beta = 0.5 # [-] Beta = (1 - Beta) in this case 
 # both Li+ and electrons are products in this reaction so they have postive coefficients
@@ -154,12 +155,12 @@ Integration
 '''
 # Integration Limits
 def min_voltage(_,SV,i_ext,Anode,Cathode):
-    V_cell = SV[2] + i_ext*t_sep/sigma_sep - SV[0]
+    V_cell = SV[2] - i_ext*t_sep/sigma_sep - SV[0]
     return V_cell - V_min
 min_voltage.terminal = True
 
 def max_voltage(_,SV,i_ext,Anode,Cathode):
-    V_cell = SV[2] + i_ext*t_sep/sigma_sep - SV[0]
+    V_cell = SV[2] - i_ext*t_sep/sigma_sep - SV[0]
     return V_cell - V_max
 max_voltage.terminal = True
 
@@ -223,14 +224,14 @@ for ind, ele in enumerate(Delta_Phi_dl_an):
     Anode.activity[-1] = Anode.gamma[-1]*(1 - X_Li_a) 
     U_cell_an[ind] = Half_Cell_Eqlib_Potential(Anode) # Open Cell Potential [V]
     
-    i_o_an[ind] = ((X_Li_a)**Anode.Beta)*(
-        (Anode.activity[Anode.ind_ion]/Anode.gamma[Anode.ind_ion])**(1-Anode.Beta))*Anode.i_o_reff
+    i_o_an[ind] = ((Anode.activity[Anode.ind_track])**Anode.Beta)*(
+        (Anode.activity[Anode.ind_ion]*Anode.activity[-1])**(1-Anode.Beta))*Anode.i_o_reff
     
     i_far_an[ind] = faradaic_current(i_o_an[ind],sim_outputs[0,ind],U_cell_an[ind],Anode.BnF_RT_an,Anode.BnF_RT_ca) # Faradaic Current [A/m^2]
 
 i_dl_an = i_ex/A_sg_an - i_far_an # Double Layer current [A/m^2]
 
-## Cathode LiFePO4 -> FePO4 + Li+ + e-
+## Cathode LiFePO4 -> Li+ + FePO4 + e-
 U_cell_ca = np.zeros_like(sim_outputs[0])
 i_far_ca = np.zeros_like(sim_outputs[0])
 i_o_ca = np.zeros_like(sim_outputs[0])
@@ -240,8 +241,8 @@ for ind, ele in enumerate(Delta_Phi_dl_ca):
     Cathode.activity[-1] = Cathode.gamma[-1]*(1 - X_Li_c)
     U_cell_ca[ind] = Half_Cell_Eqlib_Potential(Cathode) # Open Cell Potential [V]  
     
-    i_o_ca[ind] = ((X_Li_c)**Cathode.Beta)*(
-        (Cathode.activity[Cathode.ind_ion]/Cathode.gamma[Cathode.ind_ion])**(1-Cathode.Beta))*Cathode.i_o_reff 
+    i_o_ca[ind] = ((Cathode.activity[Cathode.ind_track])**Cathode.Beta)*(
+        (Cathode.activity[Cathode.ind_ion]*Cathode.activity[-1])**(1-Cathode.Beta))*Cathode.i_o_reff 
     
     i_far_ca[ind] = faradaic_current(i_o_ca[ind],sim_outputs[2,ind],U_cell_ca[ind],Cathode.BnF_RT_an,Cathode.BnF_RT_ca) # Faradaic Current [A/m^2]
     
