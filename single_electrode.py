@@ -153,8 +153,8 @@ for ind, ele in enumerate(Delta_Phi_dl_an):
     Anode.activity[-1] = Anode.gamma[-1]*(1 - X_Li_a) 
     U_cell_an[ind] = Half_Cell_Eqlib_Potential(Anode) # Open Cell Potential [V]
     
-    i_o_an[ind] = ((X_Li_a)**Anode.Beta)*(
-        (Anode.activity[Anode.ind_ion]/Anode.gamma[Anode.ind_ion])**(1-Anode.Beta))*Anode.i_o_reff
+    i_o_an[ind] = ((Anode.activity[Anode.ind_track])**Anode.Beta)*(
+        (Anode.activity[Anode.ind_ion]*Anode.activity[-1])**(1-Anode.Beta))*Anode.i_o_reff
     
     i_far_an[ind] = faradaic_current(i_o_an[ind],sim_outputs[0,ind],U_cell_an[ind],Anode.BnF_RT_an,Anode.BnF_RT_ca) # Faradaic Current [A/m^2]
 

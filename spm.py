@@ -160,12 +160,12 @@ Integration
 '''
 # Integration Limits
 def min_voltage(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca):
-    V_cell = SV[Geom_an.n_r+1] + i_ext*t_sep/sigma_sep - SV[0]
+    V_cell = SV[Geom_an.n_r+1] - i_ext*t_sep/sigma_sep - SV[0]
     return V_cell - V_min
 min_voltage.terminal = True
 
 def max_voltage(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca):
-    V_cell = SV[Geom_an.n_r+1] + i_ext*t_sep/sigma_sep - SV[0]
+    V_cell = SV[Geom_an.n_r+1] - i_ext*t_sep/sigma_sep - SV[0]
     return V_cell - V_max
 max_voltage.terminal = True
 
@@ -243,8 +243,8 @@ for ind, ele in enumerate(Delta_Phi_dl_an):
     Anode.activity[-1] = Anode.gamma[-1]*(1 - X_Li_a) 
     U_cell_an[ind] = Half_Cell_Eqlib_Potential(Anode) # Open Cell Potential [V]
     
-    i_o_an[ind] = ((X_Li_a)**Anode.Beta)*(
-        (Anode.activity[Anode.ind_ion]/Anode.gamma[Anode.ind_ion])**(1-Anode.Beta))*Anode.i_o_reff
+    i_o_an[ind] = ((Anode.activity[Anode.ind_track])**Anode.Beta)*(
+        (Anode.activity[Anode.ind_ion]*Anode.activity[-1])**(1-Anode.Beta))*Anode.i_o_reff
     
     i_far_an[ind] = faradaic_current(i_o_an[ind],Delta_Phi_dl_an[ind],U_cell_an[ind],Anode.BnF_RT_an,Anode.BnF_RT_ca) # Faradaic Current [A/m^2]
 
@@ -261,8 +261,8 @@ for ind, ele in enumerate(Delta_Phi_dl_ca):
     Cathode.activity[-1] = Cathode.gamma[-1]*(1 - X_Li_c)
     U_cell_ca[ind] = Half_Cell_Eqlib_Potential(Cathode) # Open Cell Potential [V]  
     
-    i_o_ca[ind] = ((X_Li_c)**Cathode.Beta)*(
-        (Cathode.activity[Cathode.ind_ion]/Cathode.gamma[Cathode.ind_ion])**(1-Cathode.Beta))*Cathode.i_o_reff 
+    i_o_ca[ind] = ((Cathode.activity[Cathode.ind_track])**Cathode.Beta)*(
+        (Cathode.activity[Cathode.ind_ion]*Cathode.activity[-1])**(1-Cathode.Beta))*Cathode.i_o_reff 
     
     i_far_ca[ind] = faradaic_current(i_o_ca[ind],Delta_Phi_dl_ca[ind],U_cell_ca[ind],Cathode.BnF_RT_an,Cathode.BnF_RT_ca) # Faradaic Current [A/m^2]
     
