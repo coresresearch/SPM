@@ -1,7 +1,6 @@
 # spm_functions.py
 #
 #  This file holds utility functions called by the spm model.
-
 import numpy as np 
 import math
 
@@ -24,6 +23,7 @@ def Half_Cell_Eqlib_Potential(HalfCell,F = 96485.34, T_amb = 298.15, R = 8.3145)
     U_Cell : The equalibrium (open cell) potential for the half cell [V]
     """
     n_elc = HalfCell.n
+    #T_amb = 273.15 + 25 [K]
     T = HalfCell.Temp
      
     Delta_G_cell = np.dot(HalfCell.G,HalfCell.nu) # Standard Gibbs Free Energy for the half cell reaction
@@ -36,10 +36,9 @@ def Half_Cell_Eqlib_Potential(HalfCell,F = 96485.34, T_amb = 298.15, R = 8.3145)
 
 
 def Butler_Volmer(i_o,V,U,BnF_RT_a,BnF_RT_c):
+>>>>>>> 474aa72 (Fixed areas, brought in BV function from before, adressed misc bugs)
     """
-    This function calculates the faraday current density at the electrode-electrolyte interface, using the
-    Butler-Volmer model (A/m2). Positive current is defined as positive current delivered from the electrolyte to the
-    electrode.
+    The number this returns is absolutly massive, but I cannot find an error in my equation
     
     Parameters
     ----------
@@ -64,12 +63,13 @@ def Butler_Volmer(i_o,V,U,BnF_RT_a,BnF_RT_c):
     """
     i_far= i_o*(math.exp(-BnF_RT_a*(V-U)) - math.exp(BnF_RT_c*(V-U)))
     return i_far
+>>>>>>> 474aa72 (Fixed areas, brought in BV function from before, adressed misc bugs)
 
 class Species:
     """
     Defines the thermodynamic properties of the species
     """
-    def __init__(self, Name, Gibbs_energy_formation, Standard_Entropy,Standard_State,charge):
+    def __init__(self, Name, Gibbs_energy_formation, Standard_Entropy,Standard_State):
         self.name = Name
         self.DG_f = Gibbs_energy_formation # [J/mol]
         self.S = Standard_Entropy          # [J/mol-K]
