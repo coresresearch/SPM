@@ -1,6 +1,7 @@
 # spm_functions.py
 #
 #  This file holds utility functions called by the spm model.
+
 import numpy as np 
 import math
 
@@ -23,15 +24,26 @@ def Half_Cell_Eqlib_Potential(HalfCell,F = 96485.34, T_amb = 298.15, R = 8.3145)
     U_Cell : The equalibrium (open cell) potential for the half cell [V]
     """
     n_elc = HalfCell.n
+<<<<<<< HEAD
     #T_amb = 273.15 + 25 [K]
+=======
+    print("n",n_elc)
+    #T_amb = 273.15 + 25 #[K]
+>>>>>>> c026062 (merge fix some more)
     T = HalfCell.Temp
      
     Delta_G_cell = np.dot(HalfCell.G,HalfCell.nu) # Standard Gibbs Free Energy for the half cell reaction
     Delta_S = np.dot(HalfCell.S,HalfCell.nu) # Standard Entropy for the half cell reaction
 
+<<<<<<< HEAD
     U_0_Cell_amb =  -Delta_G_cell/(n_elc*F) # Standard half cell equalibrium potential
     U_0_Cell = U_0_Cell_amb + (T- T_amb)*Delta_S/(n_elc*F) # Adjust for temperature
     U_Cell = U_0_Cell - R*T/n_elc/F*np.log(np.prod(np.power(HalfCell.activity,HalfCell.nu))) # adjust for concentration
+=======
+    U_0_Cell_amb =  -Delta_G_cell/(n_elc*F)
+    U_0_Cell = U_0_Cell_amb + (T- T_amb)*Delta_S/(n_elc*F)
+    U_Cell = U_0_Cell - R*T/n_elc/F*np.log(np.prod(np.power(HalfCell.X,HalfCell.nu)))
+>>>>>>> c026062 (merge fix some more)
     return U_Cell
 
 
@@ -42,8 +54,13 @@ def Butler_Volmer(i_o,V,U,BnF_RT_a,BnF_RT_c):
     
     Parameters
     ----------
+<<<<<<< HEAD
     i_o : Exchange Current Density [A/m^2] 
     V : Electrode potential difference at the electrode-electrolyte interface (phi_ed - phi_elyte) [V]
+=======
+    i_o : Exchange Current Density [mA/cm^2] 
+    V : Electrode potential difference at the electrode-electrolyte interface [V]
+>>>>>>> c026062 (merge fix some more)
     U : Equilibrium potential [V]
  
     Inside BnF_RT: a is for anodic, c is for cathodic
@@ -138,6 +155,7 @@ class Half_Cell:
         #   value for n if determed by the user since I do not include the elctron as a species in the reaction
         self.nuA_nF = self.nu[self.ind_ion]*A_s/n/F
 
+<<<<<<< HEAD
 def residual(_,SV,i_ext,Anode,Cathode):
     '''
     Derivations (a=anode,s=sperator,c=cathode)
@@ -212,3 +230,5 @@ def residual(_,SV,i_ext,Anode,Cathode):
     dSVdt = [dPhi_dl_a_dt, dC_Li_a_dt, dPhi_dl_c_dt, dC_Li_c_dt]
     
     return dSVdt
+=======
+>>>>>>> c026062 (merge fix some more)
