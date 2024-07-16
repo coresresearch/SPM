@@ -42,7 +42,6 @@ i_external = np.array([0,2000,0]) # external current into the Anode [A/m^2]
 t_sim_max = [.1,70,1] # the maximum time the battery will be held at each current [s]
 T = 298.15 # standard temperature [K]
 
-<<<<<<< HEAD
 # Initial Conditions
 Phi_dl_0_an = -0.64 # initial value for Phi_dl for the Anode [V]
 X_Li_0_an = 0.35 # Initial Mole Fraction of the Anode for Lithium [-]
@@ -379,9 +378,3 @@ ax9.set_ylabel(r'$i_o [A/m^2]$')
 fig4.tight_layout()
 
 plt.show()
-=======
-U = Half_Cell_Eqlib_Potential(HC)
-print(U,"[V]")
-I = Butler_Volmer(12.3,-0.8,U,HC.Temp)
-print(I,"[mA/cm2]")
->>>>>>> c026062 (merge fix some more)
