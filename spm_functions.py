@@ -214,16 +214,8 @@ def residual(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
     Phi_dl_an = SV[0]
     C_an =  SV[1:Geom_an.n_r+1] # Lithium concentration in the anode
     
-    X_Li_a = C_an[-1]/Anode.C_int[Anode.ind_track] # effective molar concentration of Lithium (LiC6) in the anode [-]
-    Anode.activity[Anode.ind_track] = Anode.gamma[Anode.ind_track]*(X_Li_a) # update activity of the LiC6
-    Anode.activity[-1] = Anode.gamma[-1]*(1 - X_Li_a) # update activity of the C6
-    #######Anode.activity[Anode.ind_ion] = Anode.gamma[Anode.ind_ion]*(C_sep[0]/Anode.C_int[Anode.ind_ion]) # update activity of Li+
-    
-    # Adjust exchange current density for concentration using a reference concentration
-    i_o_an = ((Anode.activity[Anode.ind_track])**Anode.Beta)*(
-        (Anode.activity[Anode.ind_ion]*Anode.activity[-1])**(1-Anode.Beta))*Anode.i_o_reff
-    
-    U_a = Half_Cell_Eqlib_Potential(Anode)
+    Anode, i_o_an, U_a = update_activities(C_an,Anode)
+
     i_far_a= Butler_Volmer(i_o_an,Phi_dl_an,U_a,Anode.BnF_RT_an,Anode.BnF_RT_ca)
     i_dl_a = i_ext/Geom_an.A_sg - i_far_a # Double Layer current
    
@@ -241,16 +233,8 @@ def residual(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
     Phi_dl_ca = SV[Geom_an.n_r+1]
     C_ca =  SV[Geom_an.n_r+2:Geom_an.n_r+Geom_ca.n_r+2] # Lithium concentration in the anode
     
-    X_Li_c = C_ca[-1]/Cathode.C_int[Cathode.ind_track] # effective molar concentration of Lithium (LiFePO4) in the cathode [-]
-    Cathode.activity[Cathode.ind_track] = Cathode.gamma[Cathode.ind_track]*(X_Li_c) # update activity of the LiFePO4
-    Cathode.activity[-1] = Cathode.gamma[-1]*(1 - X_Li_c) # update activity of the FePO4
-    #####Cathode.activity[Cathode.ind_ion] = Cathode.gamma[Cathode.ind_ion]*(C_sep[-1]/Cathode.C_int[Cathode.ind_ion]) # update activity of Li+
-    
-    # Adjust exchange current density for concentration using a reference concentration
-    i_o_ca = ((Cathode.activity[Cathode.ind_track])**Cathode.Beta)*(
-        (Cathode.activity[Cathode.ind_ion]*Cathode.activity[-1])**(1-Cathode.Beta))*Cathode.i_o_reff 
-    
-    U_c = Half_Cell_Eqlib_Potential(Cathode)
+    Cathode, i_o_ca, U_c = update_activities(C_ca,Cathode)
+
     i_far_c = Butler_Volmer(i_o_ca,Phi_dl_ca,U_c,Cathode.BnF_RT_an,Cathode.BnF_RT_ca)
     i_dl_c = -i_ext/Geom_ca.A_sg - i_far_c # Double Layer current
     
@@ -264,8 +248,8 @@ def residual(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
     dN_r_Li_ca_dt = np.subtract(np.transpose(N_r_Li_ca[:-1])*Geom_ca.A_shell[:-1] , np.transpose(N_r_Li_ca[1:])*Geom_ca.A_shell[1:])
     # Divide by the volume to the get the concentration rate
     dC_Li_c_dt = np.transpose(dN_r_Li_ca_dt)/Geom_ca.diff_vol
-    
-    ## Seperator
+    '''
+    ## Seperator (put on hold for now)
     N_y_Li_plus = seperator_molar_flux(i_ext,seperator,C_sep)
     
     dC_Li_plus_dt = np.zeros(seperator.n_y + 2) # room for the 2 half cells with the end nodes plus the 4 interior nodes
@@ -276,6 +260,8 @@ def residual(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
 
     # concentration in the electrolyte in the cathode   
     dC_Li_plus_dt[-1] = N_y_Li_plus[-1] + s_dot_far_ca*Geom_ca.A_sg + s_dot_dl_ca*Geom_ca.A_sg
+    '''
+    dC_Li_plus_dt = np.zeros(seperator.n_y + 2) # no change in the seperator concentrations
     
     dSVdt = np.stack((dPhi_dl_a_dt, *dC_Li_a_dt, dPhi_dl_c_dt, *dC_Li_c_dt, *dC_Li_plus_dt))
     
@@ -349,3 +335,46 @@ def seperator_molar_flux(i_ext,seperator,C):
         C[1:] + C[:-1])*i_ext/(2*seperator.sigma)
     
     return N_y_Li_plus
+
+def update_activities(C,Electrode):
+    '''
+    Updates the activites in the electrode based on the current concentrations then calculates the 
+    open cell potential and exchange current density. For now the concentration of the Li+ in the
+    electroltye phase is constant so its activity is not updated. The concentration of the outermost
+    control volume is used for the activites.
+    
+    Parameters
+    ----------
+    C : Lithium Concentrations in the Electrode [mol/m^3] 
+    Electrode : the Electrode that is being updated
+    
+    Returns
+    -------
+    Electrode : the Electrode with updated activites
+    i_o : exchange current density [A/m^2]
+    U : The open cell potential [V]
+    '''
+    X_Li = C[-1]/Electrode.C_int[Electrode.ind_track] # effective molar concentration of Lithium in the Electrode [-]
+    Electrode.activity[Electrode.ind_track] = Electrode.gamma[Electrode.ind_track]*(X_Li) # update activity of the full intercalation compound
+    Electrode.activity[-1] = Electrode.gamma[-1]*(1 - X_Li) # update activity of the empty intercalation compound
+    #######Anode.activity[Anode.ind_ion] = Anode.gamma[Anode.ind_ion]*(C_sep[0]/Anode.C_int[Anode.ind_ion]) # update activity of Li+
+    
+    # Adjust exchange current density for concentration using a reference concentration
+    i_o = ((Electrode.activity[Electrode.ind_track])**Electrode.Beta)*(
+        (Electrode.activity[Electrode.ind_ion]*Electrode.activity[-1])**(1-Electrode.Beta))*Electrode.i_o_reff
+    
+    # Adjust open cell potential for concentration using activity
+    U = Half_Cell_Eqlib_Potential(Electrode)
+    
+    return Electrode, i_o, U
+
+def node_plot_labels(nodes,opening_label):
+    '''
+    Creates a string to be used in the legend when ploting values for individual nodes. 
+    '''
+    label = []
+    r_label_an = []
+    nodes = nodes*1e6 # convert from meters to micrometers
+    for ele in nodes:
+        label.append(opening_label+str(round(ele,3))+r"$\mu m$")
+    return label

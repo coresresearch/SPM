@@ -7,7 +7,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 from spm_functions import Butler_Volmer as faradaic_current
-from spm_functions import Half_Cell_Eqlib_Potential, residual, Species, Participant, Half_Cell, internal_electrode_geom, Seperator
+from spm_functions import Half_Cell_Eqlib_Potential, residual, update_activities, node_plot_labels
+from spm_functions import Species, Participant, Half_Cell, internal_electrode_geom, Seperator
 
 # Anode is on the left at x=0 and Cathode is on the right
 # LiC6 -> Li+ + C6 + e- (reaction at the anode)
@@ -39,7 +40,7 @@ X_Li_max = 0.99 # Lithium mole fraction in an electrode at which to terminate th
 # Operating Conditions
 # If there is more than one external current the simulation will run back to back
 i_external = np.array([0,-1000]) # external current into the Anode [A/m^2] 
-t_sim_max = [.01,30] # the maximum time the battery will be held at each current [s]
+t_sim_max = [.01,40] # the maximum time the battery will be held at each current [s]
 T = 298.15 # standard temperature [K]
 
 # Initial Conditions
@@ -177,30 +178,34 @@ def max_voltage(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
 max_voltage.terminal = True
 
 def min_Li_an(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
-    return SV[Geom_an.n_r]/Anode.C_int[Anode.ind_track] - X_Li_min
+    C_Li_check = SV[Geom_an.n_r] # Concentration of Lithium at the surface of the Anode
+    return C_Li_check/Anode.C_int[Anode.ind_track] - X_Li_min
 min_Li_an.terminal = True
 
 def max_Li_an(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
-    return SV[Geom_an.n_r]/Anode.C_int[Anode.ind_track] - X_Li_max
+    C_Li_check = SV[Geom_an.n_r] # Concentration of Lithium at the surface of the Anode
+    return C_Li_check/Anode.C_int[Anode.ind_track] - X_Li_max
 max_Li_an.terminal = True
 
 def min_Li_ca(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
-    return SV[-1]/Cathode.C_int[Cathode.ind_track] - X_Li_min
+    C_Li_check = SV[Geom_an.n_r+Geom_ca.n_r+1] # Concentration of Lithium at the surface of the Cathode
+    return C_Li_check/Cathode.C_int[Cathode.ind_track] - X_Li_min
 min_Li_ca.terminal = True
 
 def max_Li_ca(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
-    return SV[-1]/Cathode.C_int[Cathode.ind_track] - X_Li_max
+    C_Li_check = SV[Geom_an.n_r+Geom_ca.n_r+1] # Concentration of Lithium at the surface of the Cathode
+    return C_Li_check/Cathode.C_int[Cathode.ind_track] - X_Li_max
 max_Li_ca.terminal = True
     
 sim_inputs = np.zeros(1 + Geom_an.n_r + 1 + Geom_ca.n_r + seperator.n_y + 2 + 1) # [phi_dl, concentrations, phi_dl, concentrations, concentrations, time]
 
 # Start Electrode with uniform concentration
-sim_inputs[0] = Phi_dl_0_an
-sim_inputs[1:Geom_an.n_r+1] = np.ones(Geom_an.n_r)*C_Li_0_an
-sim_inputs[Geom_an.n_r+1] = Phi_dl_0_ca
-sim_inputs[Geom_an.n_r+2:Geom_an.n_r+Geom_ca.n_r+2] = np.ones(Geom_ca.n_r)*C_Li_0_ca
-sim_inputs[Geom_an.n_r+Geom_ca.n_r+2:-1] = np.ones(seperator.n_y + 2)*C_Li_plus
-sim_inputs[-1] = 0
+sim_inputs[0] = Phi_dl_0_an                                                             # Initial Phi double layer - anode
+sim_inputs[1:Geom_an.n_r+1] = np.ones(Geom_an.n_r)*C_Li_0_an                            # Initial Li concentrations - anode
+sim_inputs[Geom_an.n_r+1] = Phi_dl_0_ca                                                 # Initial Phi double layer - cathode
+sim_inputs[Geom_an.n_r+2:Geom_an.n_r+Geom_ca.n_r+2] = np.ones(Geom_ca.n_r)*C_Li_0_ca    # Initial Li concentrations - cathode
+sim_inputs[Geom_an.n_r+Geom_ca.n_r+2:-1] = np.ones(seperator.n_y + 2)*C_Li_plus         # Initial Li+ concentration - seperator
+sim_inputs[-1] = 0                                                                      # Initial time
 
 for ind, i_ext in enumerate(i_external):
  
@@ -247,14 +252,7 @@ i_far_an = np.zeros_like(sim_outputs[0])
 i_o_an = np.zeros_like(sim_outputs[0])
 for ind, ele in enumerate(Delta_Phi_dl_an):
     # I find open cell potential and faradic current using the same process as the residual function
-    X_Li_a = C_Li_an[-1,ind]/Anode.C_int[Anode.ind_track] 
-    Anode.activity[Anode.ind_track] = Anode.gamma[Anode.ind_track]*(X_Li_a) 
-    Anode.activity[-1] = Anode.gamma[-1]*(1 - X_Li_a) 
-    U_cell_an[ind] = Half_Cell_Eqlib_Potential(Anode) # Open Cell Potential [V]
-    
-    i_o_an[ind] = ((Anode.activity[Anode.ind_track])**Anode.Beta)*(
-        (Anode.activity[Anode.ind_ion]*Anode.activity[-1])**(1-Anode.Beta))*Anode.i_o_reff
-    
+    Anode, i_o_an[ind], U_cell_an[ind] = update_activities(C_Li_an[:,ind],Anode)
     i_far_an[ind] = faradaic_current(i_o_an[ind],Delta_Phi_dl_an[ind],U_cell_an[ind],Anode.BnF_RT_an,Anode.BnF_RT_ca) # Faradaic Current [A/m^2]
 
 i_dl_an = i_ex/A_sg_an - i_far_an # Double Layer current [A/m^2]
@@ -264,15 +262,7 @@ U_cell_ca = np.zeros_like(sim_outputs[0])
 i_far_ca = np.zeros_like(sim_outputs[0])
 i_o_ca = np.zeros_like(sim_outputs[0])
 for ind, ele in enumerate(Delta_Phi_dl_ca):
-
-    X_Li_c = C_Li_ca[-1,ind]/Cathode.C_int[Cathode.ind_track]
-    Cathode.activity[Cathode.ind_track] = Cathode.gamma[Cathode.ind_track]*(X_Li_c)
-    Cathode.activity[-1] = Cathode.gamma[-1]*(1 - X_Li_c)
-    U_cell_ca[ind] = Half_Cell_Eqlib_Potential(Cathode) # Open Cell Potential [V]  
-    
-    i_o_ca[ind] = ((Cathode.activity[Cathode.ind_track])**Cathode.Beta)*(
-        (Cathode.activity[Cathode.ind_ion]*Cathode.activity[-1])**(1-Cathode.Beta))*Cathode.i_o_reff 
-    
+    Cathode, i_o_ca[ind], U_cell_ca[ind] = update_activities(C_Li_ca[:,ind],Cathode)
     i_far_ca[ind] = faradaic_current(i_o_ca[ind],Delta_Phi_dl_ca[ind],U_cell_ca[ind],Cathode.BnF_RT_an,Cathode.BnF_RT_ca) # Faradaic Current [A/m^2]
     
 i_dl_ca = -i_ex/A_sg_ca - i_far_ca # Double Layer current [A/m^2]
@@ -300,13 +290,17 @@ V_cell = Delta_Phi_dl_ca + Delta_Phi_sep - Delta_Phi_dl_an
 mol_an_cv = []
 mol_ca_cv = []
 for ind, ele in enumerate(C_Li_an):
-    mol_an_cv.append(ele*Geom_an.diff_vol[ind]) # moles of Lithium in the Anode particle at each node [moles]
+    mol_an_cv.append(ele*Geom_an.diff_vol[ind]) # moles of Lithium in the Anode particle at each node [mole]
 for ind, ele in enumerate(C_Li_ca):
-    mol_ca_cv.append(ele*Geom_ca.diff_vol[ind]) # moles of Lithium in the Cathode particle at each node [moles]
-mol_an = np.sum(mol_an_cv,axis=0) # total moles of Lithium in the Anode [moles]
-mol_ca = np.sum(mol_ca_cv,axis=0) # total moles of Lithium in the Cathode [moles]
-mol_total_electrodes = mol_ca + mol_an  # total moles of Lithium
+    mol_ca_cv.append(ele*Geom_ca.diff_vol[ind]) # moles of Lithium in the Cathode particle at each node [mole]
+mol_an_p = np.sum(mol_an_cv,axis=0) # total moles of Lithium in each particle in the Anode [mole/particle]
+mol_ca_p = np.sum(mol_ca_cv,axis=0) # total moles of Lithium in each particle in the Cathode [mole/particle]
+mol_an = mol_an_p*Epsilon_g*Delta_y_an/Vol_an # total moles per cross sectional area in the Anode [mole/m^2]
+mol_ca = mol_ca_p*Epsilon_g*Delta_y_ca/Vol_ca # total moles per cross sectional area in the Cathode [mole/m^2]
 
+mol_total_electrodes = mol_ca + mol_an  # total moles of Lithium per cross sectional area [mole/m^2]
+
+'''
 sep_cv_thickness = np.ones(seperator.n_y + 2)*seperator.dy
 sep_cv_thickness[0] = sep_cv_thickness[0]/2 # half nodes at the two ends
 sep_cv_thickness[-1] = sep_cv_thickness[-1]/2
@@ -315,25 +309,18 @@ mol_sep_cv = []
 for ind, ele in enumerate(C_Li_plus_sep):
     mol_sep_cv.append(ele*sep_cv_thickness[ind]) # moles of Lithium in the Seperator per unit area [moles/m^2]
 mol_sep = np.sum(mol_sep_cv,axis=0) # total moles of Lithium ions in the Cathode [moles/m^2]
+'''
 
 '''
 Plotting
 '''
 # Create a label for each node
-r_label_an = []
-nodes_an = Geom_an.r_node*1e6
-for ele in nodes_an:
-    r_label_an.append(r"$r_{an} = $"+str(round(ele,3))+r"$\mu m$")
+r_label_an = node_plot_labels(Geom_an.r_node,r"$r_{an} = $")
     
-r_label_ca = []
-nodes_ca = Geom_ca.r_node*1e6
-for ele in nodes_ca:
-    r_label_ca.append(r"$r_{ca} = $"+str(round(ele,3))+r"$\mu m$")
+r_label_ca = node_plot_labels(Geom_ca.r_node,r"$r_{ca} = $")
     
-y_label = []
-nodes_sep = np.arange(seperator.n_y+2)*round(seperator.dy*1e6,2)
-for ele in nodes_sep:
-    y_label.append(r"$y = $"+str(ele)+r"$\mu m$")
+nodes_sep = np.arange(seperator.n_y+2)*round(seperator.dy,2)
+y_label = node_plot_labels(nodes_sep,r"$y = $")
 
 fig1, (ax1, ax2) = plt.subplots(2)
 # Current to the Anode
@@ -443,6 +430,9 @@ ax9.set_ylabel(r"$i_o\: [A/m^2]$")
 
 fig5.tight_layout()
 
+''' 
+Seperator plot on hold for now
+
 #Seperator Concentration
 plt6 = plt.figure(6)
 for ind, ele in enumerate(C_Li_plus_sep):
@@ -459,8 +449,10 @@ plt.title("Amount of Lithium in the Seperator")
 plt.xlabel("time [s]")
 plt.ylabel(r"Li+ $[\frac{mol}{m^2}]$")
 
+
 plt8 = plt.figure(8)
 plt.plot(time,i_far_an*A_sg_an)
 plt.plot(time,-i_far_ca*A_sg_ca)
+'''
 
 plt.show()
