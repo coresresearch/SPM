@@ -248,7 +248,7 @@ def residual(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
     dN_r_Li_ca_dt = np.subtract(np.transpose(N_r_Li_ca[:-1])*Geom_ca.A_shell[:-1] , np.transpose(N_r_Li_ca[1:])*Geom_ca.A_shell[1:])
     # Divide by the volume to the get the concentration rate
     dC_Li_c_dt = np.transpose(dN_r_Li_ca_dt)/Geom_ca.diff_vol
-    '''
+    
     ## Seperator (put on hold for now)
     N_y_Li_plus = seperator_molar_flux(i_ext,seperator,C_sep)
     
@@ -260,9 +260,10 @@ def residual(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
 
     # concentration in the electrolyte in the cathode   
     dC_Li_plus_dt[-1] = N_y_Li_plus[-1] + s_dot_far_ca*Geom_ca.A_sg + s_dot_dl_ca*Geom_ca.A_sg
-    '''
-    dC_Li_plus_dt = np.zeros(seperator.n_y + 2) # no change in the seperator concentrations
     
+    ####### This is the line to uncomment/commnet out if I do/do not want the seperator running
+    dC_Li_plus_dt = np.zeros(seperator.n_y + 2) # no change in the seperator concentrations
+
     dSVdt = np.stack((dPhi_dl_a_dt, *dC_Li_a_dt, dPhi_dl_c_dt, *dC_Li_c_dt, *dC_Li_plus_dt))
     
     #print(dC_Li_a_dt[-1]*Geom_an.diff_vol[-1]-dC_Li_c_dt[-1]*Geom_ca.diff_vol[-1])

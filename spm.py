@@ -120,6 +120,7 @@ X_FePO4_0 = 1 - X_Li_0_ca # Initial Mole Fraction of FePO4 [-]
 C_Li_0_ca = C_FePO4*X_Li_0_ca # Initial Lithium molar concentration in the Anode [mol_Li/m^3-FePO4]
 C_FePO4_0 = C_FePO4*X_FePO4_0 # Initial FePO4 molar concentration in the Anode [mol_Li/m^3-FePO4]
 
+
 '''
 Set up the Half Cells
 '''
@@ -215,6 +216,13 @@ for ind, i_ext in enumerate(i_external):
     t_span = [t_start,t_end]
     SV_0 = sim_inputs[0:-1] # initial values
 
+    # Find the concentrations in the seperator at steady state and update the activities 
+    trans_Li = 0.5  # transference number of Lithium ion 
+    C_Li_plus_0_an = C_Li_plus + (t_sep/2 - 0)*(i_ext*(1-trans_Li)/(F*D_k_sep)) # concentration of Li+ in the anode
+    Anode.activity[Anode.ind_ion] = Anode.gamma[Anode.ind_ion]*(C_Li_plus_0_an/Anode.C_int[Anode.ind_ion])
+    C_Li_plus_0_ca = C_Li_plus + (t_sep/2 - t_sep)*(i_ext*(1-trans_Li)/(F*D_k_sep)) # concentration of Li+ in the anode
+    Cathode.activity[Cathode.ind_ion] = Cathode.gamma[Cathode.ind_ion]*(C_Li_plus_0_ca/Cathode.C_int[Cathode.ind_ion])
+    
     # Integrater
     SV = solve_ivp(residual,t_span,SV_0,method='BDF',
                 args=(i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator),
@@ -300,7 +308,7 @@ mol_ca = mol_ca_p*Epsilon_g*Delta_y_ca/Vol_ca # total moles per cross sectional 
 
 mol_total_electrodes = mol_ca + mol_an  # total moles of Lithium per cross sectional area [mole/m^2]
 
-'''
+
 sep_cv_thickness = np.ones(seperator.n_y + 2)*seperator.dy
 sep_cv_thickness[0] = sep_cv_thickness[0]/2 # half nodes at the two ends
 sep_cv_thickness[-1] = sep_cv_thickness[-1]/2
@@ -309,7 +317,7 @@ mol_sep_cv = []
 for ind, ele in enumerate(C_Li_plus_sep):
     mol_sep_cv.append(ele*sep_cv_thickness[ind]) # moles of Lithium in the Seperator per unit area [moles/m^2]
 mol_sep = np.sum(mol_sep_cv,axis=0) # total moles of Lithium ions in the Cathode [moles/m^2]
-'''
+
 
 '''
 Plotting
@@ -430,8 +438,8 @@ ax9.set_ylabel(r"$i_o\: [A/m^2]$")
 
 fig5.tight_layout()
 
-''' 
-Seperator plot on hold for now
+'''
+#Seperator plot on hold for now
 
 #Seperator Concentration
 plt6 = plt.figure(6)
