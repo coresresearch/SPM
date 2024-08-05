@@ -140,7 +140,7 @@ class Half_Cell:
         self.ind_ion = self.name.index(ion)
         # I no longer force this to be postive. The coeff of th ion is automatically set, but the 
         #   value for n if determed by the user since I do not include the elctron as a species in the reaction
-        self.nuA_nF = self.nu[self.ind_ion]*A_s/n/F
+        self.nuA_nF = self.nu[self.ind_ion]*A_s/n/F # [mol_Li+/C-m]
 
 class internal_electrode_geom:
     '''
@@ -151,7 +151,7 @@ class internal_electrode_geom:
     The first index is r = 0, index n is r = r_o
     '''
     # I uses equally spaced radial points
-    def __init__(self,r_p,n_r,A_sg):
+    def __init__(self,r_p,n_r,A_sg,Delta_y):
         self.r_p = r_p # radius of the particle 
         self.n_r = n_r # number of radial nodes
         self.dr = r_p/n_r # distance between nodes
@@ -162,6 +162,7 @@ class internal_electrode_geom:
         self.diff_vol = (4/3)*np.pi*(self.r_shell[1:]**3 - self.r_shell[:-1]**3) # volume between each pair of shells (one volume per node) [m^3]
 
         self.r_node =  (self.r_shell[:-1] + self.r_shell[1:])/2 # radi of each node [m]
+        self.Delta_y = Delta_y # Electrode thickness [m]
         
 class Seperator:
     '''
@@ -220,8 +221,8 @@ def residual(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
     i_dl_a = i_ext/Geom_an.A_sg - i_far_a # Double Layer current
    
     dPhi_dl_a_dt = (-i_far_a + i_ext/Anode.A_sg)/Anode.Cap  # returns an expression for d Delta_Phi_dl/dt in terms of Delta_Phi_dl
-    s_dot_far_an = i_far_a*Anode.nuA_nF/(3/Geom_an.r_p) # Li species production rate at the surface as a result of i_far
-    s_dot_dl_an = i_dl_a*Anode.nuA_nF/(3/Geom_an.r_p) # Li plus species movement rate from the elctroltye to the dl as a result of i_dl
+    s_dot_far_an = i_far_a*Anode.nuA_nF/(3/Geom_an.r_p) # Li species production rate at the surface as a result of i_far [mol_Li+/s-m^2]
+    s_dot_dl_an = i_dl_a*Anode.nuA_nF/(3/Geom_an.r_p) # Li plus species movement rate from the elctroltye to the dl as a result of i_dl [mol_Li+/s-m^2]
     
     N_r_Li_an =  radial_molar_flux(Anode, Geom_an, C_an, s_dot_far_an)
     # Flux in minus flux out (closer to center minus closer to surface)
@@ -240,8 +241,8 @@ def residual(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
     
     dPhi_dl_c_dt = (-i_far_c - i_ext/Cathode.A_sg)/Cathode.Cap
     # nu in these next two lines is for the Li+
-    s_dot_far_ca = i_far_c*Cathode.nuA_nF/(3/Geom_ca.r_p) # species production rate at the surface as a result of i_far [mol/m^2]
-    s_dot_dl_ca = i_dl_c*Cathode.nuA_nF/(3/Geom_ca.r_p) # species movement rate from the elctroltye to the dl as a result of i_dl [mol/m^2]
+    s_dot_far_ca = i_far_c*Cathode.nuA_nF/(3/Geom_ca.r_p) # species production rate at the surface as a result of i_far [mol_Li+/s-m^2]
+    s_dot_dl_ca = i_dl_c*Cathode.nuA_nF/(3/Geom_ca.r_p) # species movement rate from the elctroltye to the dl as a result of i_dl [mol_Li+/s-m^2]
 
     N_r_Li_ca =  radial_molar_flux(Cathode, Geom_ca, C_ca, s_dot_far_ca)
     # Flux in minus flux out (closer to center minus closer to surface)
@@ -256,13 +257,13 @@ def residual(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
     dC_Li_plus_dt[1:-1] = (N_y_Li_plus[:-1] - N_y_Li_plus[1:])/seperator.dy  # in minus out
     
     # concentration in the electrolyte in the anode
-    dC_Li_plus_dt[0] = s_dot_far_an*Geom_an.A_sg + s_dot_dl_an*Geom_an.A_sg - N_y_Li_plus[0]
+    dC_Li_plus_dt[0] = (s_dot_far_an*Geom_an.A_sg + s_dot_dl_an*Geom_an.A_sg - N_y_Li_plus[0])/(seperator.dy/2)
 
     # concentration in the electrolyte in the cathode   
-    dC_Li_plus_dt[-1] = N_y_Li_plus[-1] + s_dot_far_ca*Geom_ca.A_sg + s_dot_dl_ca*Geom_ca.A_sg
+    dC_Li_plus_dt[-1] = (N_y_Li_plus[-1] + s_dot_far_ca*Geom_ca.A_sg + s_dot_dl_ca*Geom_ca.A_sg)/(seperator.dy/2)
     
     ####### This is the line to uncomment/commnet out if I do/do not want the seperator running
-    dC_Li_plus_dt = np.zeros(seperator.n_y + 2) # no change in the seperator concentrations
+    #dC_Li_plus_dt = np.zeros(seperator.n_y + 2) # no change in the seperator concentrations
 
     dSVdt = np.stack((dPhi_dl_a_dt, *dC_Li_a_dt, dPhi_dl_c_dt, *dC_Li_c_dt, *dC_Li_plus_dt))
     
@@ -294,7 +295,7 @@ def residual_single(_,SV,i_ext,Anode,Geom_an):
     i_far_an= Butler_Volmer(i_o_an,Phi_dl_an,U_a,Anode.BnF_RT_an,Anode.BnF_RT_ca)
    
     dPhi_dl_a_dt = (-i_far_an + i_ext/Anode.A_sg)/Anode.Cap  # returns an expression for d Delta_Phi_dl/dt in terms of Delta_Phi_dl
-    s_dot_an = i_far_an*Anode.nuA_nF/(3/Geom_an.r_p) # species production rate at the surface as a result of i_far
+    s_dot_an = i_far_an*Anode.nuA_nF/(3/Geom_an.r_p) # species production rate at the surface as a result of i_far [mol_Li+/s-m^2]
         
     N_r_Li =  radial_molar_flux(Anode, Geom_an, C_an, s_dot_an)
     #print(N_r_Li)
@@ -379,3 +380,84 @@ def node_plot_labels(nodes,opening_label):
     for ele in nodes:
         label.append(opening_label+str(round(ele,3))+r"$\mu m$")
     return label
+
+def residual_dae(t,SV,SV_dot,resid,user_data):
+    i_ext = user_data[0]
+    Anode = user_data[1]
+    Geom_an = user_data[2]
+    Cathode = user_data[3]
+    Geom_ca = user_data[4]
+    seperator = user_data[5]
+       
+    C_sep = SV[Geom_an.n_r+Geom_ca.n_r+2:] # Lithium ion concentration in the eletrolyte and seperator
+    
+    ## Anode
+    Phi_dl_an = SV[0]
+    C_an =  SV[1:Geom_an.n_r+1] # Lithium concentration in the anode
+    
+    Anode, i_o_an, U_a = update_activities(C_an,Anode)
+
+    i_far_a= Butler_Volmer(i_o_an,Phi_dl_an,U_a,Anode.BnF_RT_an,Anode.BnF_RT_ca)
+    i_dl_a = i_ext/Geom_an.A_sg - i_far_a # Double Layer current
+   
+    #dPhi_dl_a_dt = (-i_far_a + i_ext/Anode.A_sg)/Anode.Cap  # returns an expression for d Delta_Phi_dl/dt in terms of Delta_Phi_dl
+    resid[0] = SV_dot[0] - (-i_far_a + i_ext/Anode.A_sg)/Anode.Cap
+    
+    s_dot_far_an = i_far_a*Anode.nuA_nF/(3/Geom_an.r_p) # Li species production rate at the surface as a result of i_far
+    s_dot_dl_an = i_dl_a*Anode.nuA_nF/(3/Geom_an.r_p) # Li plus species movement rate from the elctroltye to the dl as a result of i_dl
+    
+    N_r_Li_an =  radial_molar_flux(Anode, Geom_an, C_an, s_dot_far_an)
+    # Flux in minus flux out (closer to center minus closer to surface)
+    dN_r_Li_an_dt = np.subtract(np.transpose(N_r_Li_an[:-1])*Geom_an.A_shell[:-1] , np.transpose(N_r_Li_an[1:])*Geom_an.A_shell[1:])
+    # Divide by the volume to the get the concentration rate
+    dC_Li_a_dt = np.transpose(dN_r_Li_an_dt)/Geom_an.diff_vol
+    #dSVdt[1:Geom_an.n_r+1] = SV_dot[1:Geom_an.n_r+1] - np.transpose(dN_r_Li_an_dt)/Geom_an.diff_vol
+    for ind in range(1,Geom_an.n_r+1, 1):
+        resid[ind] = SV_dot[ind] - dC_Li_a_dt[ind-1]
+    ## Cathode
+    Phi_dl_ca = SV[Geom_an.n_r+1]
+    C_ca =  SV[Geom_an.n_r+2:Geom_an.n_r+Geom_ca.n_r+2] # Lithium concentration in the anode
+    
+    Cathode, i_o_ca, U_c = update_activities(C_ca,Cathode)
+
+    i_far_c = Butler_Volmer(i_o_ca,Phi_dl_ca,U_c,Cathode.BnF_RT_an,Cathode.BnF_RT_ca)
+    i_dl_c = -i_ext/Geom_ca.A_sg - i_far_c # Double Layer current
+    
+    #dPhi_dl_c_dt = (-i_far_c - i_ext/Cathode.A_sg)/Cathode.Cap
+    resid[Geom_an.n_r+1] = SV_dot[Geom_an.n_r+1] - (-i_far_c - i_ext/Cathode.A_sg)/Cathode.Cap
+    
+    # nu in these next two lines is for the Li+
+    s_dot_far_ca = i_far_c*Cathode.nuA_nF/(3/Geom_ca.r_p) # species production rate at the surface as a result of i_far [mol/m^2]
+    s_dot_dl_ca = i_dl_c*Cathode.nuA_nF/(3/Geom_ca.r_p) # species movement rate from the elctroltye to the dl as a result of i_dl [mol/m^2]
+
+    N_r_Li_ca =  radial_molar_flux(Cathode, Geom_ca, C_ca, s_dot_far_ca)
+    # Flux in minus flux out (closer to center minus closer to surface)
+    dN_r_Li_ca_dt = np.subtract(np.transpose(N_r_Li_ca[:-1])*Geom_ca.A_shell[:-1] , np.transpose(N_r_Li_ca[1:])*Geom_ca.A_shell[1:])
+    # Divide by the volume to the get the concentration rate
+    dC_Li_c_dt = np.transpose(dN_r_Li_ca_dt)/Geom_ca.diff_vol
+    #dSVdt[Geom_an.n_r+2:Geom_an.n_r+Geom_ca.n_r+2] = SV_dot[Geom_an.n_r+2:Geom_an.n_r+Geom_ca.n_r+2] - np.transpose(dN_r_Li_ca_dt)/Geom_ca.diff_vol
+    for ind in range(Geom_an.n_r+2,Geom_an.n_r+Geom_ca.n_r+2, 1):
+        resid[ind] = SV_dot[ind] - dC_Li_c_dt[ind-(Geom_an.n_r+2)]
+        
+    ## Seperator (put on hold for now)
+    N_y_Li_plus = seperator_molar_flux(i_ext,seperator,C_sep)
+    
+    dC_Li_plus_dt = np.zeros(seperator.n_y + 2) # room for the 2 half cells with the end nodes plus the 4 interior nodes
+    dC_Li_plus_dt[1:-1] = (N_y_Li_plus[:-1] - N_y_Li_plus[1:])/seperator.dy  # in minus out
+    
+    # concentration in the electrolyte in the anode
+    dC_Li_plus_dt[0] = s_dot_far_an*Geom_an.A_sg + s_dot_dl_an*Geom_an.A_sg - N_y_Li_plus[0]
+
+    # concentration in the electrolyte in the cathode   
+    dC_Li_plus_dt[-1] = N_y_Li_plus[-1] + s_dot_far_ca*Geom_ca.A_sg + s_dot_dl_ca*Geom_ca.A_sg
+    
+    ####### This is the line to uncomment/commnet out if I do/do not want the seperator running
+    resid[Geom_an.n_r+Geom_ca.n_r+2:] = SV_dot[Geom_an.n_r+Geom_ca.n_r+2:] -  np.zeros(seperator.n_y + 2) # no change in the seperator concentrations
+
+    #print(dC_Li_a_dt[-1]*Geom_an.diff_vol[-1]-dC_Li_c_dt[-1]*Geom_ca.diff_vol[-1])
+    #print(s_dot_far_ca*Geom_ca.A_shell[-1])
+    #print(s_dot_far_an*Geom_an.A_shell[-1])
+    #print(s_dot_far_ca*Geom_ca.A_sg+s_dot_far_an*Geom_an.A_sg)
+
+    # Algebric equation for d_Phi/dx in the seperator
+    #resid[-1] = SV_dot[-1] - 0

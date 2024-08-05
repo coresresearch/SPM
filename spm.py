@@ -2,12 +2,16 @@
 #
 # This file serves as the main model file.  
 #   It is called by the user to run the model
+# Tells the code which solver to use, False uses the DAE solver
+ivp = True
+#ivp = False
 
 import numpy as np
 import matplotlib.pyplot as plt
+from scikits.odes import dae
 from scipy.integrate import solve_ivp
 from spm_functions import Butler_Volmer as faradaic_current
-from spm_functions import Half_Cell_Eqlib_Potential, residual, update_activities, node_plot_labels
+from spm_functions import Half_Cell_Eqlib_Potential, residual, residual_dae, update_activities, node_plot_labels
 from spm_functions import Species, Participant, Half_Cell, internal_electrode_geom, Seperator
 
 # Anode is on the left at x=0 and Cathode is on the right
@@ -39,8 +43,8 @@ X_Li_max = 0.99 # Lithium mole fraction in an electrode at which to terminate th
 
 # Operating Conditions
 # If there is more than one external current the simulation will run back to back
-i_external = np.array([0,-1000]) # external current into the Anode [A/m^2] 
-t_sim_max = [.01,40] # the maximum time the battery will be held at each current [s]
+i_external = np.array([-1000,200,0]) # external current into the Anode [A/m^2] 
+t_sim_max = [40,100,5] # the maximum time the battery will be held at each current [s]
 T = 298.15 # standard temperature [K]
 
 # Initial Conditions
@@ -144,7 +148,7 @@ Prod_an = [Li_plus_rxn_an,C6_rxn_an]
 # Both electrodes have the same reation and in this forward reaction one electron is 
 #   produced so n = 1 (as it is defined above in the inputs)
 Anode = Half_Cell(React_an,Prod_an,n,T,Beta,F,R,Cap_dl,i_o_reff,A_sg_an,A_s_an,'LiC6','Li+',D_k_an)
-Geom_an = internal_electrode_geom(r_an,n_r_an,A_sg_an)
+Geom_an = internal_electrode_geom(r_an,n_r_an,A_sg_an,Delta_y_an)
 
 # Cathode reacation: LiFePO4 -> FePO4 + Li+ + e-
 LiFePO4 = Species("LiFePO4",-326650,130.95,C_FePO4,0)
@@ -158,7 +162,7 @@ React_ca = [LiFePO4_rxn_ca]
 Prod_ca = [Li_plus_rxn_ca,FePO4_rxn_ca]
 
 Cathode = Half_Cell(React_ca,Prod_ca,n,T,Beta,F,R,Cap_dl,i_o_reff,A_sg_ca,A_s_ca,'LiFePO4','Li+',D_k_ca)
-Geom_ca = internal_electrode_geom(r_ca,n_r_ca,A_sg_ca)
+Geom_ca = internal_electrode_geom(r_ca,n_r_ca,A_sg_ca,Delta_y_ca)
 
 ## Set up Seperator
 z_Li_plus = nu_Li_plus*1 # charge of Li+
@@ -167,82 +171,137 @@ seperator = Seperator(D_k_sep,sigma_sep,t_sep,n_y_sep,z_Li_plus,F,R,T)
 '''
 Integration
 '''
-# Integration Limits
-def min_voltage(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
-    V_cell = SV[Geom_an.n_r+1] - i_ext*t_sep/sigma_sep - SV[0]
-    return V_cell - V_min
-min_voltage.terminal = True
+if ivp == True:
+    # Integration Limits
+    def min_voltage(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
+        V_cell = SV[Geom_an.n_r+1] - i_ext*t_sep/sigma_sep - SV[0]
+        return V_cell - V_min
+    min_voltage.terminal = True
 
-def max_voltage(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
-    V_cell = SV[Geom_an.n_r+1] - i_ext*t_sep/sigma_sep - SV[0]
-    return V_cell - V_max
-max_voltage.terminal = True
+    def max_voltage(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
+        V_cell = SV[Geom_an.n_r+1] - i_ext*t_sep/sigma_sep - SV[0]
+        return V_cell - V_max
+    max_voltage.terminal = True
 
-def min_Li_an(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
-    C_Li_check = SV[Geom_an.n_r] # Concentration of Lithium at the surface of the Anode
-    return C_Li_check/Anode.C_int[Anode.ind_track] - X_Li_min
-min_Li_an.terminal = True
+    def min_Li_an(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
+        C_Li_check = SV[Geom_an.n_r] # Concentration of Lithium at the surface of the Anode
+        return C_Li_check/Anode.C_int[Anode.ind_track] - X_Li_min
+    min_Li_an.terminal = True
 
-def max_Li_an(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
-    C_Li_check = SV[Geom_an.n_r] # Concentration of Lithium at the surface of the Anode
-    return C_Li_check/Anode.C_int[Anode.ind_track] - X_Li_max
-max_Li_an.terminal = True
+    def max_Li_an(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
+        C_Li_check = SV[Geom_an.n_r] # Concentration of Lithium at the surface of the Anode
+        return C_Li_check/Anode.C_int[Anode.ind_track] - X_Li_max
+    max_Li_an.terminal = True
 
-def min_Li_ca(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
-    C_Li_check = SV[Geom_an.n_r+Geom_ca.n_r+1] # Concentration of Lithium at the surface of the Cathode
-    return C_Li_check/Cathode.C_int[Cathode.ind_track] - X_Li_min
-min_Li_ca.terminal = True
+    def min_Li_ca(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
+        C_Li_check = SV[Geom_an.n_r+Geom_ca.n_r+1] # Concentration of Lithium at the surface of the Cathode
+        return C_Li_check/Cathode.C_int[Cathode.ind_track] - X_Li_min
+    min_Li_ca.terminal = True
 
-def max_Li_ca(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
-    C_Li_check = SV[Geom_an.n_r+Geom_ca.n_r+1] # Concentration of Lithium at the surface of the Cathode
-    return C_Li_check/Cathode.C_int[Cathode.ind_track] - X_Li_max
-max_Li_ca.terminal = True
+    def max_Li_ca(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
+        C_Li_check = SV[Geom_an.n_r+Geom_ca.n_r+1] # Concentration of Lithium at the surface of the Cathode
+        return C_Li_check/Cathode.C_int[Cathode.ind_track] - X_Li_max
+    max_Li_ca.terminal = True
+        
+    sim_inputs = np.zeros(1 + Geom_an.n_r + 1 + Geom_ca.n_r + seperator.n_y + 2 + 1) # [phi_dl, concentrations, phi_dl, concentrations, concentrations, time]
+
+    # Start Electrode with uniform concentration
+    sim_inputs[0] = Phi_dl_0_an                                                             # Initial Phi double layer - anode
+    sim_inputs[1:Geom_an.n_r+1] = np.ones(Geom_an.n_r)*C_Li_0_an                            # Initial Li concentrations - anode
+    sim_inputs[Geom_an.n_r+1] = Phi_dl_0_ca                                                 # Initial Phi double layer - cathode
+    sim_inputs[Geom_an.n_r+2:Geom_an.n_r+Geom_ca.n_r+2] = np.ones(Geom_ca.n_r)*C_Li_0_ca    # Initial Li concentrations - cathode
+    sim_inputs[Geom_an.n_r+Geom_ca.n_r+2:-1] = np.ones(seperator.n_y + 2)*C_Li_plus         # Initial Li+ concentration - seperator
+    sim_inputs[-1] = 0                                                                      # Initial time
+
+    for ind, i_ext in enumerate(i_external):
     
-sim_inputs = np.zeros(1 + Geom_an.n_r + 1 + Geom_ca.n_r + seperator.n_y + 2 + 1) # [phi_dl, concentrations, phi_dl, concentrations, concentrations, time]
+        # Integration parameters 
+        t_start = sim_inputs[-1] # [s]
+        t_end = t_start + t_sim_max[ind] # max length of time passed in the integration [s]
+        t_span = [t_start,t_end]
+        SV_0 = sim_inputs[0:-1] # initial values
 
-# Start Electrode with uniform concentration
-sim_inputs[0] = Phi_dl_0_an                                                             # Initial Phi double layer - anode
-sim_inputs[1:Geom_an.n_r+1] = np.ones(Geom_an.n_r)*C_Li_0_an                            # Initial Li concentrations - anode
-sim_inputs[Geom_an.n_r+1] = Phi_dl_0_ca                                                 # Initial Phi double layer - cathode
-sim_inputs[Geom_an.n_r+2:Geom_an.n_r+Geom_ca.n_r+2] = np.ones(Geom_ca.n_r)*C_Li_0_ca    # Initial Li concentrations - cathode
-sim_inputs[Geom_an.n_r+Geom_ca.n_r+2:-1] = np.ones(seperator.n_y + 2)*C_Li_plus         # Initial Li+ concentration - seperator
-sim_inputs[-1] = 0                                                                      # Initial time
+        # Find the concentrations in the seperator at steady state and update the activities 
+        trans_Li = 0.5  # transference number of Lithium ion 
+        C_Li_plus_0_an = C_Li_plus + (t_sep/2 - 0)*(i_ext*(1-trans_Li)/(F*D_k_sep)) # concentration of Li+ in the anode
+        Anode.activity[Anode.ind_ion] = Anode.gamma[Anode.ind_ion]*(C_Li_plus_0_an/Anode.C_int[Anode.ind_ion])
+        C_Li_plus_0_ca = C_Li_plus + (t_sep/2 - t_sep)*(i_ext*(1-trans_Li)/(F*D_k_sep)) # concentration of Li+ in the anode
+        Cathode.activity[Cathode.ind_ion] = Cathode.gamma[Cathode.ind_ion]*(C_Li_plus_0_ca/Cathode.C_int[Cathode.ind_ion])
+        
+        # Integrater
+        SV = solve_ivp(residual,t_span,SV_0,method='BDF',
+                    args=(i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator),
+                    rtol = 1e-8,atol = 1e-10, events=(min_voltage, max_voltage, min_Li_an, max_Li_an, min_Li_ca, max_Li_ca))
+        
+        new_outputs = np.stack((*SV.y, SV.t, i_ext*np.ones_like(SV.t)))
+        if ind == 0:
+            sim_outputs = new_outputs
+        else:
+            sim_outputs = np.concatenate((sim_outputs,new_outputs), axis = 1)
 
-for ind, i_ext in enumerate(i_external):
+        # Once an event is triggered the intergration stops, I want it to just swtich to the next current
+        #   so I move the inputs just under the event threshold (back one index) so the integration can proceed 
+        for ind, i in enumerate(sim_outputs):
+            if ind<len(sim_outputs)-1:
+                if SV.status == 1:
+                    sim_inputs[ind] = i[-2]
+                else:
+                    sim_inputs[ind] = i[-1]
+
+
+else:
+    # Integration Limits
+    n_roots = 6
+    def terminate_check(t,SV,SV_dot,return_val,user_data):
+        V_cell = SV[Geom_an.n_r+1] - user_data[0]*t_sep/sigma_sep - SV[0] # Cell Voltage
+        return_val[0] = V_cell - V_min
+        return_val[1] = V_cell - V_max
+        
+        C_Li_check = SV[Geom_an.n_r] # Concentration of Lithium at the surface of the Anode
+        return_val[2] = C_Li_check/Anode.C_int[Anode.ind_track] - X_Li_min
+        return_val[3] = C_Li_check/Anode.C_int[Anode.ind_track] - X_Li_max
+        
+        C_Li_check = SV[Geom_an.n_r+Geom_ca.n_r+1] # Concentration of Lithium at the surface of the Cathode
+        return_val[4] = C_Li_check/Cathode.C_int[Cathode.ind_track] - X_Li_min
+        return_val[5] = C_Li_check/Cathode.C_int[Cathode.ind_track] - X_Li_max 
+
+    sim_inputs = np.zeros(1 + Geom_an.n_r + 1 + Geom_ca.n_r + seperator.n_y + 2 + 1) # [phi_dl, concentrations, phi_dl, concentrations, concentrations, time]
+
+    # Start Electrode with uniform concentration
+    sim_inputs[0] = Phi_dl_0_an                                                             # Initial Phi double layer - anode
+    sim_inputs[1:Geom_an.n_r+1] = np.ones(Geom_an.n_r)*C_Li_0_an                            # Initial Li concentrations - anode
+    sim_inputs[Geom_an.n_r+1] = Phi_dl_0_ca                                                 # Initial Phi double layer - cathode
+    sim_inputs[Geom_an.n_r+2:Geom_an.n_r+Geom_ca.n_r+2] = np.ones(Geom_ca.n_r)*C_Li_0_ca    # Initial Li concentrations - cathode
+    sim_inputs[Geom_an.n_r+Geom_ca.n_r+2:-1] = np.ones(seperator.n_y + 2)*C_Li_plus         # Initial Li+ concentration - seperator
+    sim_inputs[-1] = 0  
+    
+    for ind, i_ext in enumerate(i_external):
+        algvars = []
+        params = [i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator]
+        options =  {'user_data':params, 'rtol':1e-10,
+            'atol':1e-15, 'algebraic_vars_idx':algvars, 'first_step_size':1e-16,'rootfn':terminate_check,'nr_rootfns':n_roots}
+             #          , 'compute_initcond':'yp0', 'max_steps':10000}
+
+        solver = dae('ida', residual_dae, **options)
+        r =5
+        t_start = sim_inputs[-1] # [s]
+        t_end = t_start + t_sim_max[ind] # max length of time passed in the integration [s]
+        times = np.linspace(t_start,t_end,10000)
+        t_span = t_end - t_start
+        SV_0 = sim_inputs[0:-1]
+        SV_dot_0  = np.zeros_like(SV_0)
+        
+        solution = solver.solve(times, SV_0, SV_dot_0)    
+        
+        new_outputs = np.stack((*np.transpose(solution.values.y), solution.values.t, i_ext*np.ones_like(solution.values.t)))
+        if ind == 0:
+            sim_outputs = new_outputs
+        else:
+            sim_outputs = np.concatenate((sim_outputs,new_outputs), axis = 1)
  
-    # Integration parameters 
-    t_start = sim_inputs[-1] # [s]
-    t_end = t_start + t_sim_max[ind] # max length of time passed in the integration [s]
-    t_span = [t_start,t_end]
-    SV_0 = sim_inputs[0:-1] # initial values
-
-    # Find the concentrations in the seperator at steady state and update the activities 
-    trans_Li = 0.5  # transference number of Lithium ion 
-    C_Li_plus_0_an = C_Li_plus + (t_sep/2 - 0)*(i_ext*(1-trans_Li)/(F*D_k_sep)) # concentration of Li+ in the anode
-    Anode.activity[Anode.ind_ion] = Anode.gamma[Anode.ind_ion]*(C_Li_plus_0_an/Anode.C_int[Anode.ind_ion])
-    C_Li_plus_0_ca = C_Li_plus + (t_sep/2 - t_sep)*(i_ext*(1-trans_Li)/(F*D_k_sep)) # concentration of Li+ in the anode
-    Cathode.activity[Cathode.ind_ion] = Cathode.gamma[Cathode.ind_ion]*(C_Li_plus_0_ca/Cathode.C_int[Cathode.ind_ion])
-    
-    # Integrater
-    SV = solve_ivp(residual,t_span,SV_0,method='BDF',
-                args=(i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator),
-                rtol = 1e-8,atol = 1e-10, events=(min_voltage, max_voltage, min_Li_an, max_Li_an, min_Li_ca, max_Li_ca))
-    
-    new_outputs = np.stack((*SV.y, SV.t, i_ext*np.ones_like(SV.t)))
-    if ind == 0:
-        sim_outputs = new_outputs
-    else:
-        sim_outputs = np.concatenate((sim_outputs,new_outputs), axis = 1)
-
-    # Once an event is triggered the intergration stops, I want it to just swtich to the next current
-    #   so I move the inputs just under the event threshold (back one index) so the integration can proceed 
-    for ind, i in enumerate(sim_outputs):
-        if ind<len(sim_outputs)-1:
-            if SV.status == 1:
-                sim_inputs[ind] = i[-2]
-            else:
-                sim_inputs[ind] = i[-1]
-    
+        for ind, i in enumerate(sim_outputs):
+            if ind<len(sim_outputs)-1:
+                sim_inputs[ind] = i[-1] 
 '''
 Post Processing
 '''
@@ -438,7 +497,7 @@ ax9.set_ylabel(r"$i_o\: [A/m^2]$")
 
 fig5.tight_layout()
 
-'''
+
 #Seperator plot on hold for now
 
 #Seperator Concentration
@@ -461,6 +520,6 @@ plt.ylabel(r"Li+ $[\frac{mol}{m^2}]$")
 plt8 = plt.figure(8)
 plt.plot(time,i_far_an*A_sg_an)
 plt.plot(time,-i_far_ca*A_sg_ca)
-'''
+
 
 plt.show()
