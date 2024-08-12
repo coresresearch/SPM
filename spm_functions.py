@@ -4,6 +4,7 @@
 
 import numpy as np 
 import math
+from scipy.optimize import fsolve
 
 def Half_Cell_Eqlib_Potential(HalfCell,F = 96485.34, T_amb = 298.15, R = 8.3145):
     """
@@ -174,6 +175,20 @@ class Seperator:
         self.dy = thickness/(n_y+1)
         self.n_y = n_y
         self.zF_RT = z*F/(R*T)
+
+class Index_start:
+    '''
+    contains all of the index boundries for the State Variable (SV) vector
+    I only track the starts because python indexes in the form {this index}:{one before this index}
+    so the starting index of the next section works as the ending index of the previous section
+    '''
+    def __init__(self,n_r_an,n_r_ca,n_y_sep):
+        self.dPhi_an = 0                    
+        self.C_an = 1
+        self.dPhi_ca = n_r_an + 1
+        self.C_ca = n_r_an + 2
+        self.C_sep = n_r_an + n_r_ca + 2
+        self.Phi_sep = n_r_an + n_r_ca + n_y_sep + 4
            
 def residual(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
     '''
@@ -215,7 +230,7 @@ def residual(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
     Phi_dl_an = SV[0]
     C_an =  SV[1:Geom_an.n_r+1] # Lithium concentration in the anode
     
-    Anode, i_o_an, U_a = update_activities(C_an,Anode)
+    Anode, i_o_an, U_a = update_activities(C_an,Anode,C_sep[0])
 
     i_far_a= Butler_Volmer(i_o_an,Phi_dl_an,U_a,Anode.BnF_RT_an,Anode.BnF_RT_ca)
     i_dl_a = i_ext/Geom_an.A_sg - i_far_a # Double Layer current
@@ -233,8 +248,8 @@ def residual(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
     ## Cathode
     Phi_dl_ca = SV[Geom_an.n_r+1]
     C_ca =  SV[Geom_an.n_r+2:Geom_an.n_r+Geom_ca.n_r+2] # Lithium concentration in the anode
-    
-    Cathode, i_o_ca, U_c = update_activities(C_ca,Cathode)
+
+    Cathode, i_o_ca, U_c = update_activities(C_ca,Cathode,C_sep[-1])
 
     i_far_c = Butler_Volmer(i_o_ca,Phi_dl_ca,U_c,Cathode.BnF_RT_an,Cathode.BnF_RT_ca)
     i_dl_c = -i_ext/Geom_ca.A_sg - i_far_c # Double Layer current
@@ -262,7 +277,7 @@ def residual(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
     # concentration in the electrolyte in the cathode   
     dC_Li_plus_dt[-1] = (N_y_Li_plus[-1] + s_dot_far_ca*Geom_ca.A_sg + s_dot_dl_ca*Geom_ca.A_sg)/(seperator.dy/2)
     
-    ####### This is the line to uncomment/commnet out if I do/do not want the seperator running
+    ####### This is the line to uncomment/commnet out if I do not/do want the seperator running
     #dC_Li_plus_dt = np.zeros(seperator.n_y + 2) # no change in the seperator concentrations
 
     dSVdt = np.stack((dPhi_dl_a_dt, *dC_Li_a_dt, dPhi_dl_c_dt, *dC_Li_c_dt, *dC_Li_plus_dt))
@@ -328,6 +343,7 @@ def radial_molar_flux(Electrode, Geometry, C, s_dot):
 
 def seperator_molar_flux(i_ext,seperator,C):
     '''
+    the one i use with solve_ivp
     '''
     # I track concentrations for the electroltye in each Electrode and at each node inside the seperator
     
@@ -338,7 +354,20 @@ def seperator_molar_flux(i_ext,seperator,C):
     
     return N_y_Li_plus
 
-def update_activities(C,Electrode):
+def seperator_molar_flux_dae(Phi_sep,seperator,C):
+    '''
+    the one i use with the dae solver
+    '''
+    # I track concentrations for the electroltye in each Electrode and at each node inside the seperator
+    
+    N_y_Li_plus = np.zeros(seperator.n_y + 1)
+    
+    N_y_Li_plus = -seperator.D_k*((C[1:] - C[:-1])/seperator.dy) - seperator.D_k*seperator.zF_RT*(
+        C[1:] + C[:-1])/2*(Phi_sep[1:] - Phi_sep[:-1])/seperator.dy
+    
+    return N_y_Li_plus
+
+def update_activities(C_electrode,Electrode,C_electrolyte):
     '''
     Updates the activites in the electrode based on the current concentrations then calculates the 
     open cell potential and exchange current density. For now the concentration of the Li+ in the
@@ -347,8 +376,9 @@ def update_activities(C,Electrode):
     
     Parameters
     ----------
-    C : Lithium Concentrations in the Electrode [mol/m^3] 
+    C_electrode : Lithium Concentrations in the Electrode [mol/m^3] 
     Electrode : the Electrode that is being updated
+    C_electrode : Lithium ion Concentrations in the electrolyte phase of the Electrode [mol/m^3] 
     
     Returns
     -------
@@ -356,11 +386,13 @@ def update_activities(C,Electrode):
     i_o : exchange current density [A/m^2]
     U : The open cell potential [V]
     '''
-    X_Li = C[-1]/Electrode.C_int[Electrode.ind_track] # effective molar concentration of Lithium in the Electrode [-]
+    X_Li = C_electrode[-1]/Electrode.C_int[Electrode.ind_track] # effective molar concentration of Lithium at the Electrode surface [-]
     Electrode.activity[Electrode.ind_track] = Electrode.gamma[Electrode.ind_track]*(X_Li) # update activity of the full intercalation compound
     Electrode.activity[-1] = Electrode.gamma[-1]*(1 - X_Li) # update activity of the empty intercalation compound
-    #######Anode.activity[Anode.ind_ion] = Anode.gamma[Anode.ind_ion]*(C_sep[0]/Anode.C_int[Anode.ind_ion]) # update activity of Li+
-    
+    Electrode.activity[Electrode.ind_ion] = Electrode.gamma[Electrode.ind_ion]*(C_electrolyte/Electrode.C_int[Electrode.ind_ion]) # update activity of Li+
+    #print(Electrode.activity[Electrode.ind_ion])
+    #print(Electrode.C_int[Electrode.ind_ion])
+    #print(C_electrolyte)
     # Adjust exchange current density for concentration using a reference concentration
     i_o = ((Electrode.activity[Electrode.ind_track])**Electrode.Beta)*(
         (Electrode.activity[Electrode.ind_ion]*Electrode.activity[-1])**(1-Electrode.Beta))*Electrode.i_o_reff
@@ -381,6 +413,17 @@ def node_plot_labels(nodes,opening_label):
         label.append(opening_label+str(round(ele,3))+r"$\mu m$")
     return label
 
+def dae_initial_guess(guesses,i_ext,seperator):
+    def f(x):
+        functions = np.empty(len(x))
+        functions[0:-1] = i_ext + seperator.sigma*(x[1:] - x[:-1])/seperator.dy
+        functions[-1] = x[0]
+        #functions[0] = i_ext + 2*seperator.sigma*(x[0] - 0)/seperator.dy
+        #functions[-1] = i_ext + 2*seperator.sigma*(x[-1] - x[-2])/seperator.dy
+        return functions
+    new_guesses = fsolve(f,guesses)
+    return new_guesses 
+
 def residual_dae(t,SV,SV_dot,resid,user_data):
     i_ext = user_data[0]
     Anode = user_data[1]
@@ -388,14 +431,13 @@ def residual_dae(t,SV,SV_dot,resid,user_data):
     Cathode = user_data[3]
     Geom_ca = user_data[4]
     seperator = user_data[5]
-       
-    C_sep = SV[Geom_an.n_r+Geom_ca.n_r+2:] # Lithium ion concentration in the eletrolyte and seperator
-    
+        
     ## Anode
+    C_electrolyte_an = SV[Geom_an.n_r+Geom_ca.n_r+2]
     Phi_dl_an = SV[0]
     C_an =  SV[1:Geom_an.n_r+1] # Lithium concentration in the anode
     
-    Anode, i_o_an, U_a = update_activities(C_an,Anode)
+    Anode, i_o_an, U_a = update_activities(C_an,Anode,C_electrolyte_an)
 
     i_far_a= Butler_Volmer(i_o_an,Phi_dl_an,U_a,Anode.BnF_RT_an,Anode.BnF_RT_ca)
     i_dl_a = i_ext/Geom_an.A_sg - i_far_a # Double Layer current
@@ -414,11 +456,13 @@ def residual_dae(t,SV,SV_dot,resid,user_data):
     #dSVdt[1:Geom_an.n_r+1] = SV_dot[1:Geom_an.n_r+1] - np.transpose(dN_r_Li_an_dt)/Geom_an.diff_vol
     for ind in range(1,Geom_an.n_r+1, 1):
         resid[ind] = SV_dot[ind] - dC_Li_a_dt[ind-1]
+        
     ## Cathode
     Phi_dl_ca = SV[Geom_an.n_r+1]
+    C_electrolyte_ca = SV[Geom_an.n_r+Geom_ca.n_r+seperator.n_y+3]
     C_ca =  SV[Geom_an.n_r+2:Geom_an.n_r+Geom_ca.n_r+2] # Lithium concentration in the anode
     
-    Cathode, i_o_ca, U_c = update_activities(C_ca,Cathode)
+    Cathode, i_o_ca, U_c = update_activities(C_ca,Cathode,C_electrolyte_ca)
 
     i_far_c = Butler_Volmer(i_o_ca,Phi_dl_ca,U_c,Cathode.BnF_RT_an,Cathode.BnF_RT_ca)
     i_dl_c = -i_ext/Geom_ca.A_sg - i_far_c # Double Layer current
@@ -439,20 +483,27 @@ def residual_dae(t,SV,SV_dot,resid,user_data):
     for ind in range(Geom_an.n_r+2,Geom_an.n_r+Geom_ca.n_r+2, 1):
         resid[ind] = SV_dot[ind] - dC_Li_c_dt[ind-(Geom_an.n_r+2)]
         
-    ## Seperator (put on hold for now)
-    N_y_Li_plus = seperator_molar_flux(i_ext,seperator,C_sep)
+    ## Seperator
+    C_sep = SV[Geom_an.n_r+Geom_ca.n_r+2:Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4] # Lithium ion concentration in the eletrolyte and seperator
+    Phi_sep = SV[Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4:]
+
+    N_y_Li_plus = seperator_molar_flux_dae(Phi_sep,seperator,C_sep)
     
     dC_Li_plus_dt = np.zeros(seperator.n_y + 2) # room for the 2 half cells with the end nodes plus the 4 interior nodes
-    dC_Li_plus_dt[1:-1] = (N_y_Li_plus[:-1] - N_y_Li_plus[1:])/seperator.dy  # in minus out
+    resid[Geom_an.n_r+Geom_ca.n_r+3:Geom_an.n_r+Geom_ca.n_r+seperator.n_y+3] = SV_dot[Geom_an.n_r+Geom_ca.n_r+3:Geom_an.n_r+Geom_ca.n_r+seperator.n_y+3] - (N_y_Li_plus[:-1] - N_y_Li_plus[1:])/seperator.dy  # in minus out
     
     # concentration in the electrolyte in the anode
-    dC_Li_plus_dt[0] = s_dot_far_an*Geom_an.A_sg + s_dot_dl_an*Geom_an.A_sg - N_y_Li_plus[0]
-
+    resid[Geom_an.n_r+Geom_ca.n_r+2] = SV_dot[Geom_an.n_r+Geom_ca.n_r+2] - (s_dot_far_an*Geom_an.A_sg + s_dot_dl_an*Geom_an.A_sg - N_y_Li_plus[0])/(seperator.dy/2)
+    
     # concentration in the electrolyte in the cathode   
-    dC_Li_plus_dt[-1] = N_y_Li_plus[-1] + s_dot_far_ca*Geom_ca.A_sg + s_dot_dl_ca*Geom_ca.A_sg
+    resid[Geom_an.n_r+Geom_ca.n_r+seperator.n_y+3] = SV_dot[Geom_an.n_r+Geom_ca.n_r+seperator.n_y+3] - (N_y_Li_plus[-1] + s_dot_far_ca*Geom_ca.A_sg + s_dot_dl_ca*Geom_ca.A_sg)/(seperator.dy/2)
     
     ####### This is the line to uncomment/commnet out if I do/do not want the seperator running
-    resid[Geom_an.n_r+Geom_ca.n_r+2:] = SV_dot[Geom_an.n_r+Geom_ca.n_r+2:] -  np.zeros(seperator.n_y + 2) # no change in the seperator concentrations
+    #resid[Geom_an.n_r+Geom_ca.n_r+2:Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4] = SV_dot[Geom_an.n_r+Geom_ca.n_r+2:Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4] # no change in the seperator concentrations
+    
+    # phi of the seperator
+    resid[Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4:-1] = i_ext + seperator.sigma*(SV[Geom_an.n_r+Geom_ca.n_r+seperator.n_y+5:] - SV[Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4:-1])/seperator.dy
+    resid[-1] = SV[Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4] # sets the first node to have the same potential as the anode(zero)
 
     #print(dC_Li_a_dt[-1]*Geom_an.diff_vol[-1]-dC_Li_c_dt[-1]*Geom_ca.diff_vol[-1])
     #print(s_dot_far_ca*Geom_ca.A_shell[-1])
