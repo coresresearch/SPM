@@ -190,7 +190,88 @@ class Index_start:
         self.C_sep = n_r_an + n_r_ca + 2
         self.Phi_sep = n_r_an + n_r_ca + n_y_sep + 4
            
-def residual(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
+def radial_molar_flux(Electrode, Geometry, C, s_dot):
+    '''
+    C: Molar cocentrations at each node [mol/m^3]
+    s_dot: species production rate at the surface [mol/m^2-s]
+    '''
+    N_r_Li = np.zeros(Geometry.n_r + 1)
+    
+    N_r_Li[0] = 0 # No flux at the center of the electrode
+    
+    N_r_Li[1:-1] = -Electrode.D_k*(np.subtract(C[1:],C[:-1]))/Geometry.dr
+
+    N_r_Li[-1] = -s_dot # Flux at the surface is equal and opposite to the production rate 
+    
+    return N_r_Li
+
+def seperator_molar_flux_dae(Phi_sep,seperator,C):
+    '''
+    the one i use with the dae solver
+    '''
+    # I track concentrations for the electroltye in each Electrode and at each node inside the seperator
+    
+    N_y_Li_plus = np.zeros(seperator.n_y + 1)
+    
+    N_y_Li_plus = -seperator.D_k*((C[1:] - C[:-1])/seperator.dy) - seperator.D_k*seperator.zF_RT*(
+        C[1:] + C[:-1])/2*(Phi_sep[1:] - Phi_sep[:-1])/seperator.dy
+    
+    return N_y_Li_plus
+
+def update_activities(C_electrode,Electrode,C_electrolyte):
+    '''
+    Updates the activites in the electrode based on the current concentrations then calculates the 
+    open cell potential and exchange current density. For now the concentration of the Li+ in the
+    electroltye phase is constant so its activity is not updated. The concentration of the outermost
+    control volume is used for the activites.
+    
+    Parameters
+    ----------
+    C_electrode : Lithium Concentrations in the Electrode [mol/m^3] 
+    Electrode : the Electrode that is being updated
+    C_electrolyte : Lithium ion Concentrations in the electrolyte phase of the Electrode [mol/m^3] 
+    
+    Returns
+    -------
+    Electrode : the Electrode with updated activites
+    i_o : exchange current density [A/m^2]
+    U : The open cell potential [V]
+    '''
+    X_Li = C_electrode[-1]/Electrode.C_int[Electrode.ind_track] # effective molar concentration of Lithium at the Electrode surface [-]
+    Electrode.activity[Electrode.ind_track] = Electrode.gamma[Electrode.ind_track]*(X_Li) # update activity of the full intercalation compound
+    Electrode.activity[-1] = Electrode.gamma[-1]*(1 - X_Li) # update activity of the empty intercalation compound
+    Electrode.activity[Electrode.ind_ion] = Electrode.gamma[Electrode.ind_ion]*(C_electrolyte/Electrode.C_int[Electrode.ind_ion]) # update activity of Li+
+    # Adjust exchange current density for concentration using a reference concentration
+    i_o = ((Electrode.activity[Electrode.ind_track])**Electrode.Beta)*(
+        (Electrode.activity[Electrode.ind_ion]*Electrode.activity[-1])**(1-Electrode.Beta))*Electrode.i_o_reff
+    
+    # Adjust open cell potential for concentration using activity
+    U = Half_Cell_Eqlib_Potential(Electrode)
+    
+    return Electrode, i_o, U
+
+def node_plot_labels(nodes,opening_label):
+    '''
+    Creates a string to be used in the legend when ploting values for individual nodes. 
+    '''
+    label = []
+    nodes = nodes*1e6 # convert from meters to micrometers
+    for ele in nodes:
+        label.append(opening_label+str(round(ele,3))+r"$\mu m$")
+    return label
+
+def dae_initial_guess(guesses,i_ext,seperator):
+    def f(x):
+        functions = np.empty(len(x))
+        functions[0:-1] = i_ext + seperator.sigma*(x[1:] - x[:-1])/seperator.dy
+        functions[-1] = x[0]
+        #functions[0] = i_ext + 2*seperator.sigma*(x[0] - 0)/seperator.dy
+        #functions[-1] = i_ext + 2*seperator.sigma*(x[-1] - x[-2])/seperator.dy
+        return functions
+    new_guesses = fsolve(f,guesses)
+    return new_guesses 
+
+def residual_dae(t,SV,SV_dot,resid,user_data):
     '''
     Derivations (a=anode,s=sperator,c=cathode)
 
@@ -224,207 +305,6 @@ def residual(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
     # I adjust the exchange current densities for concentration 
     # I use mole fractions in place of activites when adjusting for concentration with the Open Cell Potential
     
-    C_sep = SV[Geom_an.n_r+Geom_ca.n_r+2:] # Lithium ion concentration in the eletrolyte and seperator
-    
-    ## Anode
-    Phi_dl_an = SV[0]
-    C_an =  SV[1:Geom_an.n_r+1] # Lithium concentration in the anode
-    
-    Anode, i_o_an, U_a = update_activities(C_an,Anode,C_sep[0])
-
-    i_far_a= Butler_Volmer(i_o_an,Phi_dl_an,U_a,Anode.BnF_RT_an,Anode.BnF_RT_ca)
-    i_dl_a = i_ext/Geom_an.A_sg - i_far_a # Double Layer current
-   
-    dPhi_dl_a_dt = (-i_far_a + i_ext/Anode.A_sg)/Anode.Cap  # returns an expression for d Delta_Phi_dl/dt in terms of Delta_Phi_dl
-    s_dot_far_an = i_far_a*Anode.nuA_nF/(3/Geom_an.r_p) # Li species production rate at the surface as a result of i_far [mol_Li+/s-m^2]
-    s_dot_dl_an = i_dl_a*Anode.nuA_nF/(3/Geom_an.r_p) # Li plus species movement rate from the elctroltye to the dl as a result of i_dl [mol_Li+/s-m^2]
-    
-    N_r_Li_an =  radial_molar_flux(Anode, Geom_an, C_an, s_dot_far_an)
-    # Flux in minus flux out (closer to center minus closer to surface)
-    dN_r_Li_an_dt = np.subtract(np.transpose(N_r_Li_an[:-1])*Geom_an.A_shell[:-1] , np.transpose(N_r_Li_an[1:])*Geom_an.A_shell[1:])
-    # Divide by the volume to the get the concentration rate
-    dC_Li_a_dt = np.transpose(dN_r_Li_an_dt)/Geom_an.diff_vol
-    
-    ## Cathode
-    Phi_dl_ca = SV[Geom_an.n_r+1]
-    C_ca =  SV[Geom_an.n_r+2:Geom_an.n_r+Geom_ca.n_r+2] # Lithium concentration in the anode
-
-    Cathode, i_o_ca, U_c = update_activities(C_ca,Cathode,C_sep[-1])
-
-    i_far_c = Butler_Volmer(i_o_ca,Phi_dl_ca,U_c,Cathode.BnF_RT_an,Cathode.BnF_RT_ca)
-    i_dl_c = -i_ext/Geom_ca.A_sg - i_far_c # Double Layer current
-    
-    dPhi_dl_c_dt = (-i_far_c - i_ext/Cathode.A_sg)/Cathode.Cap
-    # nu in these next two lines is for the Li+
-    s_dot_far_ca = i_far_c*Cathode.nuA_nF/(3/Geom_ca.r_p) # species production rate at the surface as a result of i_far [mol_Li+/s-m^2]
-    s_dot_dl_ca = i_dl_c*Cathode.nuA_nF/(3/Geom_ca.r_p) # species movement rate from the elctroltye to the dl as a result of i_dl [mol_Li+/s-m^2]
-
-    N_r_Li_ca =  radial_molar_flux(Cathode, Geom_ca, C_ca, s_dot_far_ca)
-    # Flux in minus flux out (closer to center minus closer to surface)
-    dN_r_Li_ca_dt = np.subtract(np.transpose(N_r_Li_ca[:-1])*Geom_ca.A_shell[:-1] , np.transpose(N_r_Li_ca[1:])*Geom_ca.A_shell[1:])
-    # Divide by the volume to the get the concentration rate
-    dC_Li_c_dt = np.transpose(dN_r_Li_ca_dt)/Geom_ca.diff_vol
-    
-    ## Seperator (put on hold for now)
-    N_y_Li_plus = seperator_molar_flux(i_ext,seperator,C_sep)
-    
-    dC_Li_plus_dt = np.zeros(seperator.n_y + 2) # room for the 2 half cells with the end nodes plus the 4 interior nodes
-    dC_Li_plus_dt[1:-1] = (N_y_Li_plus[:-1] - N_y_Li_plus[1:])/seperator.dy  # in minus out
-    
-    # concentration in the electrolyte in the anode
-    dC_Li_plus_dt[0] = (s_dot_far_an*Geom_an.A_sg + s_dot_dl_an*Geom_an.A_sg - N_y_Li_plus[0])/(seperator.dy/2)
-
-    # concentration in the electrolyte in the cathode   
-    dC_Li_plus_dt[-1] = (N_y_Li_plus[-1] + s_dot_far_ca*Geom_ca.A_sg + s_dot_dl_ca*Geom_ca.A_sg)/(seperator.dy/2)
-    
-    ####### This is the line to uncomment/commnet out if I do not/do want the seperator running
-    #dC_Li_plus_dt = np.zeros(seperator.n_y + 2) # no change in the seperator concentrations
-
-    dSVdt = np.stack((dPhi_dl_a_dt, *dC_Li_a_dt, dPhi_dl_c_dt, *dC_Li_c_dt, *dC_Li_plus_dt))
-    
-    #print(dC_Li_a_dt[-1]*Geom_an.diff_vol[-1]-dC_Li_c_dt[-1]*Geom_ca.diff_vol[-1])
-    #print(s_dot_far_ca*Geom_ca.A_shell[-1])
-    #print(s_dot_far_an*Geom_an.A_shell[-1])
-    #print(s_dot_far_ca*Geom_ca.A_sg+s_dot_far_an*Geom_an.A_sg)
-
-    return dSVdt
-
-def residual_single(_,SV,i_ext,Anode,Geom_an):
-    '''
-    Same as the other residual function, but pared down for one electrode 
-    '''
-    # Anode
-    Phi_dl_an = SV[0] # Double layer potential
-    C_an =  SV[1:Geom_an.n_r+1] # Lithium concentration in the anode
-    
-    X_Li_a = C_an[-1]/Anode.C_int[Anode.ind_track] # effective molar concentration of Lithium (LiC6) on the anode surface [-]
-    Anode.activity[Anode.ind_track] = Anode.gamma[Anode.ind_track]*(X_Li_a) # update activity of the LiC6
-    Anode.activity[-1] = Anode.gamma[-1]*(1 - X_Li_a) # update activity of the C6
-    # The activity of the Li+ in the electroltye does not change because I am assuming the concentration is constant
-    
-    # Adjust exchange current density for concentration
-    i_o_an = ((X_Li_a)**Anode.Beta)*(
-        (Anode.activity[Anode.ind_ion]/Anode.gamma[Anode.ind_ion])**(1-Anode.Beta))*Anode.i_o_reff
-    
-    U_a = Half_Cell_Eqlib_Potential(Anode)
-    i_far_an= Butler_Volmer(i_o_an,Phi_dl_an,U_a,Anode.BnF_RT_an,Anode.BnF_RT_ca)
-   
-    dPhi_dl_a_dt = (-i_far_an + i_ext/Anode.A_sg)/Anode.Cap  # returns an expression for d Delta_Phi_dl/dt in terms of Delta_Phi_dl
-    s_dot_an = i_far_an*Anode.nuA_nF/(3/Geom_an.r_p) # species production rate at the surface as a result of i_far [mol_Li+/s-m^2]
-        
-    N_r_Li =  radial_molar_flux(Anode, Geom_an, C_an, s_dot_an)
-    #print(N_r_Li)
-    #breakpoint()
-    
-    # Flux in minus flux out (closer to center minus closer to surface)
-    dN_r_Li_dt = np.subtract(np.transpose(N_r_Li[:-1])*Geom_an.A_shell[:-1] , np.transpose(N_r_Li[1:])*Geom_an.A_shell[1:])
-    
-    # Divide by the volume to the get the concentration rate
-    dC_Li_a_dt = np.transpose(dN_r_Li_dt)/Geom_an.diff_vol
-    
-    dSVdt = np.stack((dPhi_dl_a_dt, *dC_Li_a_dt))
-    
-    return dSVdt
-
-def radial_molar_flux(Electrode, Geometry, C, s_dot):
-    '''
-    C: Molar cocentrations at each node [mol/m^3]
-    s_dot: species production rate at the surface [mol/m^2-s]
-    '''
-    N_r_Li = np.zeros(Geometry.n_r + 1)
-    
-    N_r_Li[0] = 0 # No flux at the center of the electrode
-    
-    N_r_Li[1:-1] = -Electrode.D_k*(np.subtract(C[1:],C[:-1]))/Geometry.dr
-
-    N_r_Li[-1] = -s_dot # Flux at the surface is equal and opposite to the production rate 
-    
-    return N_r_Li
-
-def seperator_molar_flux(i_ext,seperator,C):
-    '''
-    the one i use with solve_ivp
-    '''
-    # I track concentrations for the electroltye in each Electrode and at each node inside the seperator
-    
-    N_y_Li_plus = np.zeros(seperator.n_y + 1)
-    
-    N_y_Li_plus = -seperator.D_k*((C[1:] - C[:-1])/seperator.dy) + seperator.D_k*seperator.zF_RT*(
-        C[1:] + C[:-1])*i_ext/(2*seperator.sigma)
-    
-    return N_y_Li_plus
-
-def seperator_molar_flux_dae(Phi_sep,seperator,C):
-    '''
-    the one i use with the dae solver
-    '''
-    # I track concentrations for the electroltye in each Electrode and at each node inside the seperator
-    
-    N_y_Li_plus = np.zeros(seperator.n_y + 1)
-    
-    N_y_Li_plus = -seperator.D_k*((C[1:] - C[:-1])/seperator.dy) - seperator.D_k*seperator.zF_RT*(
-        C[1:] + C[:-1])/2*(Phi_sep[1:] - Phi_sep[:-1])/seperator.dy
-    
-    return N_y_Li_plus
-
-def update_activities(C_electrode,Electrode,C_electrolyte):
-    '''
-    Updates the activites in the electrode based on the current concentrations then calculates the 
-    open cell potential and exchange current density. For now the concentration of the Li+ in the
-    electroltye phase is constant so its activity is not updated. The concentration of the outermost
-    control volume is used for the activites.
-    
-    Parameters
-    ----------
-    C_electrode : Lithium Concentrations in the Electrode [mol/m^3] 
-    Electrode : the Electrode that is being updated
-    C_electrode : Lithium ion Concentrations in the electrolyte phase of the Electrode [mol/m^3] 
-    
-    Returns
-    -------
-    Electrode : the Electrode with updated activites
-    i_o : exchange current density [A/m^2]
-    U : The open cell potential [V]
-    '''
-    X_Li = C_electrode[-1]/Electrode.C_int[Electrode.ind_track] # effective molar concentration of Lithium at the Electrode surface [-]
-    Electrode.activity[Electrode.ind_track] = Electrode.gamma[Electrode.ind_track]*(X_Li) # update activity of the full intercalation compound
-    Electrode.activity[-1] = Electrode.gamma[-1]*(1 - X_Li) # update activity of the empty intercalation compound
-    Electrode.activity[Electrode.ind_ion] = Electrode.gamma[Electrode.ind_ion]*(C_electrolyte/Electrode.C_int[Electrode.ind_ion]) # update activity of Li+
-    #print(Electrode.activity[Electrode.ind_ion])
-    #print(Electrode.C_int[Electrode.ind_ion])
-    #print(C_electrolyte)
-    # Adjust exchange current density for concentration using a reference concentration
-    i_o = ((Electrode.activity[Electrode.ind_track])**Electrode.Beta)*(
-        (Electrode.activity[Electrode.ind_ion]*Electrode.activity[-1])**(1-Electrode.Beta))*Electrode.i_o_reff
-    
-    # Adjust open cell potential for concentration using activity
-    U = Half_Cell_Eqlib_Potential(Electrode)
-    
-    return Electrode, i_o, U
-
-def node_plot_labels(nodes,opening_label):
-    '''
-    Creates a string to be used in the legend when ploting values for individual nodes. 
-    '''
-    label = []
-    r_label_an = []
-    nodes = nodes*1e6 # convert from meters to micrometers
-    for ele in nodes:
-        label.append(opening_label+str(round(ele,3))+r"$\mu m$")
-    return label
-
-def dae_initial_guess(guesses,i_ext,seperator):
-    def f(x):
-        functions = np.empty(len(x))
-        functions[0:-1] = i_ext + seperator.sigma*(x[1:] - x[:-1])/seperator.dy
-        functions[-1] = x[0]
-        #functions[0] = i_ext + 2*seperator.sigma*(x[0] - 0)/seperator.dy
-        #functions[-1] = i_ext + 2*seperator.sigma*(x[-1] - x[-2])/seperator.dy
-        return functions
-    new_guesses = fsolve(f,guesses)
-    return new_guesses 
-
-def residual_dae(t,SV,SV_dot,resid,user_data):
     i_ext = user_data[0]
     Anode = user_data[1]
     Geom_an = user_data[2]
@@ -470,7 +350,7 @@ def residual_dae(t,SV,SV_dot,resid,user_data):
     #dPhi_dl_c_dt = (-i_far_c - i_ext/Cathode.A_sg)/Cathode.Cap
     resid[Geom_an.n_r+1] = SV_dot[Geom_an.n_r+1] - (-i_far_c - i_ext/Cathode.A_sg)/Cathode.Cap
     
-    # nu in these next two lines is for the Li+
+    # nu in these next two lines is for Li+
     s_dot_far_ca = i_far_c*Cathode.nuA_nF/(3/Geom_ca.r_p) # species production rate at the surface as a result of i_far [mol/m^2]
     s_dot_dl_ca = i_dl_c*Cathode.nuA_nF/(3/Geom_ca.r_p) # species movement rate from the elctroltye to the dl as a result of i_dl [mol/m^2]
 
@@ -489,7 +369,6 @@ def residual_dae(t,SV,SV_dot,resid,user_data):
 
     N_y_Li_plus = seperator_molar_flux_dae(Phi_sep,seperator,C_sep)
     
-    dC_Li_plus_dt = np.zeros(seperator.n_y + 2) # room for the 2 half cells with the end nodes plus the 4 interior nodes
     resid[Geom_an.n_r+Geom_ca.n_r+3:Geom_an.n_r+Geom_ca.n_r+seperator.n_y+3] = SV_dot[Geom_an.n_r+Geom_ca.n_r+3:Geom_an.n_r+Geom_ca.n_r+seperator.n_y+3] - (N_y_Li_plus[:-1] - N_y_Li_plus[1:])/seperator.dy  # in minus out
     
     # concentration in the electrolyte in the anode
@@ -501,14 +380,6 @@ def residual_dae(t,SV,SV_dot,resid,user_data):
     ####### This is the line to uncomment/commnet out if I do/do not want the seperator running
     #resid[Geom_an.n_r+Geom_ca.n_r+2:Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4] = SV_dot[Geom_an.n_r+Geom_ca.n_r+2:Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4] # no change in the seperator concentrations
     
-    # phi of the seperator
+    # Phi of the seperator (relative to the first node)
     resid[Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4:-1] = i_ext + seperator.sigma*(SV[Geom_an.n_r+Geom_ca.n_r+seperator.n_y+5:] - SV[Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4:-1])/seperator.dy
-    resid[-1] = SV[Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4] # sets the first node to have the same potential as the anode(zero)
-
-    #print(dC_Li_a_dt[-1]*Geom_an.diff_vol[-1]-dC_Li_c_dt[-1]*Geom_ca.diff_vol[-1])
-    #print(s_dot_far_ca*Geom_ca.A_shell[-1])
-    #print(s_dot_far_an*Geom_an.A_shell[-1])
-    #print(s_dot_far_ca*Geom_ca.A_sg+s_dot_far_an*Geom_an.A_sg)
-
-    # Algebric equation for d_Phi/dx in the seperator
-    #resid[-1] = SV_dot[-1] - 0
+    resid[-1] = SV[Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4] # sets the first node to have a potential of zero

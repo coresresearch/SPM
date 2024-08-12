@@ -2,17 +2,13 @@
 #
 # This file serves as the main model file.  
 #   It is called by the user to run the model
-# Tells the code which solver to use, False uses the DAE solver
-ivp = True
-#ivp = False
 
 import numpy as np
 import matplotlib.pyplot as plt
 from scikits.odes import dae
-from scipy.integrate import solve_ivp
 from spm_functions import Butler_Volmer as faradaic_current
-from spm_functions import Half_Cell_Eqlib_Potential, residual, residual_dae, update_activities, node_plot_labels, dae_initial_guess
-from spm_functions import Species, Participant, Half_Cell, internal_electrode_geom, Seperator
+from spm_functions import Half_Cell_Eqlib_Potential, residual_dae, update_activities, node_plot_labels, dae_initial_guess
+from spm_functions import Species, Participant, Half_Cell, internal_electrode_geom, Seperator, Index_start
 
 # Anode is on the left at x=0 and Cathode is on the right
 # LiC6 -> Li+ + C6 + e- (reaction at the anode)
@@ -43,8 +39,8 @@ X_Li_max = 0.99 # Lithium mole fraction in an electrode at which to terminate th
 
 # Operating Conditions
 # If there is more than one external current the simulation will run back to back
-i_external = np.array([-1000]) # external current into the Anode [A/m^2] 
-t_sim_max = [40] # the maximum time the battery will be held at each current [s]
+i_external = np.array([-1000,200,0]) # external current into the Anode [A/m^2] 
+t_sim_max = [180,100,5] # the maximum time the battery will be held at each current [s]
 T = 298.15 # standard temperature [K]
 
 # Initial Conditions
@@ -84,10 +80,10 @@ D_k_sep = 7e-8 #Difusion coefficient of Li+ in the seperator [m^2/s]
 t_sep =  1e-5 # thickness of the seperator [m]
 n_y_sep = 4 # number of nodes inside the seperator
 Delta_y_an = 50*10**-6 # Anode thickness [m]
-r_an = 3*10**-6 # Anode particle radius [m]
+r_an = 5*10**-6 # Anode particle radius [m]
 n_r_an = 5 # Number of radial nodes in the anode
 Delta_y_ca = 50*10**-6 # Cathode thickness [m]
-r_ca = 5*10**-6 # Cathode particle radius [m]
+r_ca = 3*10**-6 # Cathode particle radius [m]
 n_r_ca = 5 # Number of radial nodes in the cathode
 Epsilon_g = 0.65 # volume fraction fo graphite [-]
 
@@ -123,7 +119,6 @@ C_FePO4 = rho_FePO4/MW_FePO4 # Molar concentration of FePO4 in the cathode [mol/
 X_FePO4_0 = 1 - X_Li_0_ca # Initial Mole Fraction of FePO4 [-]
 C_Li_0_ca = C_FePO4*X_Li_0_ca # Initial Lithium molar concentration in the Anode [mol_Li/m^3-FePO4]
 C_FePO4_0 = C_FePO4*X_FePO4_0 # Initial FePO4 molar concentration in the Anode [mol_Li/m^3-FePO4]
-
 
 '''
 Set up the Half Cells
@@ -171,159 +166,84 @@ seperator = Seperator(D_k_sep,sigma_sep,t_sep,n_y_sep,z_Li_plus,F,R,T)
 '''
 Integration
 '''
-if ivp == True:
-    # Integration Limits
-    def min_voltage(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
-        V_cell = SV[Geom_an.n_r+1] - i_ext*t_sep/sigma_sep - SV[0]
-        return V_cell - V_min
-    min_voltage.terminal = True
-
-    def max_voltage(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
-        V_cell = SV[Geom_an.n_r+1] - i_ext*t_sep/sigma_sep - SV[0]
-        return V_cell - V_max
-    max_voltage.terminal = True
-
-    def min_Li_an(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
-        C_Li_check = SV[Geom_an.n_r] # Concentration of Lithium at the surface of the Anode
-        return C_Li_check/Anode.C_int[Anode.ind_track] - X_Li_min
-    min_Li_an.terminal = True
-
-    def max_Li_an(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
-        C_Li_check = SV[Geom_an.n_r] # Concentration of Lithium at the surface of the Anode
-        return C_Li_check/Anode.C_int[Anode.ind_track] - X_Li_max
-    max_Li_an.terminal = True
-
-    def min_Li_ca(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
-        C_Li_check = SV[Geom_an.n_r+Geom_ca.n_r+1] # Concentration of Lithium at the surface of the Cathode
-        return C_Li_check/Cathode.C_int[Cathode.ind_track] - X_Li_min
-    min_Li_ca.terminal = True
-
-    def max_Li_ca(_,SV,i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator):
-        C_Li_check = SV[Geom_an.n_r+Geom_ca.n_r+1] # Concentration of Lithium at the surface of the Cathode
-        return C_Li_check/Cathode.C_int[Cathode.ind_track] - X_Li_max
-    max_Li_ca.terminal = True
-        
-    sim_inputs = np.zeros(1 + Geom_an.n_r + 1 + Geom_ca.n_r + (seperator.n_y + 2) + 1) # [phi_dl, concentrations, phi_dl, concentrations, concentrations, time]
-
-    # Start Electrode with uniform concentration
-    sim_inputs[0] = Phi_dl_0_an                                                             # Initial Phi double layer - anode
-    sim_inputs[1:Geom_an.n_r+1] = np.ones(Geom_an.n_r)*C_Li_0_an                            # Initial Li concentrations - anode
-    sim_inputs[Geom_an.n_r+1] = Phi_dl_0_ca                                                 # Initial Phi double layer - cathode
-    sim_inputs[Geom_an.n_r+2:Geom_an.n_r+Geom_ca.n_r+2] = np.ones(Geom_ca.n_r)*C_Li_0_ca    # Initial Li concentrations - cathode
-    sim_inputs[Geom_an.n_r+Geom_ca.n_r+2:-1] = np.ones(seperator.n_y + 2)*C_Li_plus         # Initial Li+ concentration - seperator
-    sim_inputs[-1] = 0                                                                      # Initial time
-
-    for ind, i_ext in enumerate(i_external):
+# Integration Limits 
+n_roots = 6 # number of termination checks
+def terminate_check(t,SV,SV_dot,return_val,user_data):
+    # V_cell = Delta_Phi_dl_ca + Delta_Phi_sep - Delta_Phi_dl_an
+    V_cell = SV[Geom_an.n_r+1] - user_data[0]*t_sep/sigma_sep - SV[0] # Cell Voltage
+    return_val[0] = V_cell - V_min
+    return_val[1] = V_cell - V_max
     
-        # Integration parameters 
-        t_start = sim_inputs[-1] # [s]
-        t_end = t_start + t_sim_max[ind] # max length of time passed in the integration [s]
-        t_span = [t_start,t_end]
-        SV_0 = sim_inputs[0:-1] # initial values
-
-        # Find the concentrations in the seperator at steady state and update the activities 
-        trans_Li = 0.5  # transference number of Lithium ion 
-        C_Li_plus_0_an = C_Li_plus + (t_sep/2 - 0)*(i_ext*(1-trans_Li)/(F*D_k_sep)) # concentration of Li+ in the anode
-        Anode.activity[Anode.ind_ion] = Anode.gamma[Anode.ind_ion]*(C_Li_plus_0_an/Anode.C_int[Anode.ind_ion])
-        C_Li_plus_0_ca = C_Li_plus + (t_sep/2 - t_sep)*(i_ext*(1-trans_Li)/(F*D_k_sep)) # concentration of Li+ in the anode
-        Cathode.activity[Cathode.ind_ion] = Cathode.gamma[Cathode.ind_ion]*(C_Li_plus_0_ca/Cathode.C_int[Cathode.ind_ion])
-        
-        print(C_Li_plus_0_an)
-        print(C_Li_plus_0_ca)
-        
-        # Integrater
-        SV = solve_ivp(residual,t_span,SV_0,method='BDF',
-                    args=(i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator),
-                    rtol = 1e-8,atol = 1e-10, events=(min_voltage, max_voltage, min_Li_an, max_Li_an, min_Li_ca, max_Li_ca))
-        
-        new_outputs = np.stack((*SV.y, SV.t, i_ext*np.ones_like(SV.t)))
-        if ind == 0:
-            sim_outputs = new_outputs
-        else:
-            sim_outputs = np.concatenate((sim_outputs,new_outputs), axis = 1)
-
-        # Once an event is triggered the intergration stops, I want it to just swtich to the next current
-        #   so I move the inputs just under the event threshold (back one index) so the integration can proceed 
-        for ind, i in enumerate(sim_outputs):
-            if ind<len(sim_outputs)-1:
-                if SV.status == 1:
-                    sim_inputs[ind] = i[-2]
-                else:
-                    sim_inputs[ind] = i[-1]
-
-
-else:
-    # Integration Limits
-    n_roots = 6
-    def terminate_check(t,SV,SV_dot,return_val,user_data):
-        V_cell = SV[Geom_an.n_r+1] - user_data[0]*t_sep/sigma_sep - SV[0] # Cell Voltage
-        return_val[0] = V_cell - V_min
-        return_val[1] = V_cell - V_max
-        
-        C_Li_check = SV[Geom_an.n_r] # Concentration of Lithium at the surface of the Anode
-        return_val[2] = C_Li_check/Anode.C_int[Anode.ind_track] - X_Li_min
-        return_val[3] = C_Li_check/Anode.C_int[Anode.ind_track] - X_Li_max
-        
-        C_Li_check = SV[Geom_an.n_r+Geom_ca.n_r+1] # Concentration of Lithium at the surface of the Cathode
-        return_val[4] = C_Li_check/Cathode.C_int[Cathode.ind_track] - X_Li_min
-        return_val[5] = C_Li_check/Cathode.C_int[Cathode.ind_track] - X_Li_max 
+    C_Li_check = SV[Geom_an.n_r] # Concentration of Lithium at the surface of the Anode
+    return_val[2] = C_Li_check/Anode.C_int[Anode.ind_track] - X_Li_min
+    return_val[3] = C_Li_check/Anode.C_int[Anode.ind_track] - X_Li_max
     
-    # [phi_dl_an, concentrations anode, phi_dl_an, concentrations cathode, concentrations seperator, phi_sep, time]
-    sim_inputs = np.zeros(1 + Geom_an.n_r + 1 + Geom_ca.n_r + (seperator.n_y + 2) + (seperator.n_y + 2) + 1) 
+    C_Li_check = SV[Geom_an.n_r+Geom_ca.n_r+1] # Concentration of Lithium at the surface of the Cathode
+    return_val[4] = C_Li_check/Cathode.C_int[Cathode.ind_track] - X_Li_min
+    return_val[5] = C_Li_check/Cathode.C_int[Cathode.ind_track] - X_Li_max 
 
-    # Start Electrode with uniform concentration
-    sim_inputs[0] = Phi_dl_0_an                                                             # Initial Phi double layer - anode
-    sim_inputs[1:Geom_an.n_r+1] = np.ones(Geom_an.n_r)*C_Li_0_an                            # Initial Li concentrations - anode
-    sim_inputs[Geom_an.n_r+1] = Phi_dl_0_ca                                                 # Initial Phi double layer - cathode
-    sim_inputs[Geom_an.n_r+2 : Geom_an.n_r+Geom_ca.n_r+2] = np.ones(Geom_ca.n_r)*C_Li_0_ca  # Initial Li concentrations - cathode
-    sim_inputs[Geom_an.n_r+Geom_ca.n_r+2 : Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4] = np.ones(seperator.n_y + 2)*C_Li_plus         # Initial Li+ concentration - seperator
-    sim_inputs[Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4 : -1] = np.zeros(seperator.n_y + 2)  # Initial Phi - seperator (placeholder, updated based on i_ext in loop)
-    sim_inputs[-1] = 0
+# [phi_dl_an, concentrations anode, phi_dl_an, concentrations cathode, concentrations seperator, phi_sep, time]
+sim_inputs = np.zeros(1 + Geom_an.n_r + 1 + Geom_ca.n_r + (seperator.n_y + 2) + (seperator.n_y + 2) + 1) 
+
+# Create a object with the first index for each section of the State Variable vector
+SV_indx = Index_start(Geom_an.n_r,Geom_ca.n_r,seperator.n_y)
+
+# Start Electrode with uniform concentrations in all phases
+sim_inputs[SV_indx.dPhi_an] = Phi_dl_0_an                                           # Initial Phi double layer - anode
+sim_inputs[SV_indx.C_an : SV_indx.dPhi_ca] = np.ones(Geom_an.n_r)*C_Li_0_an         # Initial Li concentrations - anode
+sim_inputs[SV_indx.dPhi_ca] = Phi_dl_0_ca                                           # Initial Phi double layer - cathode
+sim_inputs[SV_indx.C_ca : SV_indx.C_sep] = np.ones(Geom_ca.n_r)*C_Li_0_ca           # Initial Li concentrations - cathode
+sim_inputs[SV_indx.C_sep : SV_indx.Phi_sep] = np.ones(seperator.n_y + 2)*C_Li_plus  # Initial Li+ concentration - seperator
+sim_inputs[SV_indx.Phi_sep : -1] = np.zeros(seperator.n_y + 2)                      # Initial Phi - seperator (placeholder, updated based on each i_ext in loop)
+sim_inputs[-1] = 0                                                                  # Initial Time
+
+for ind, i_ext in enumerate(i_external):
     
-    for ind, i_ext in enumerate(i_external):
-        
-        # set the inital Phi_sperator values based on i_external      
-        initial_guesses_phi_sep = np.linspace(0,-i_ext*t_sep/sigma_sep,(seperator.n_y+2))
-        sim_inputs[Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4:-1] = dae_initial_guess(initial_guesses_phi_sep,i_ext,seperator)
+    # set the inital Phi_sperator values based on i_external (theses are the guesses for the algebraic equations)     
+    initial_guesses_phi_sep = np.linspace(0,-i_ext*t_sep/sigma_sep,(seperator.n_y+2))
+    # use fsolve to makes sure the guesses are close enough for the DAE solver to work
+    sim_inputs[Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4:-1] = dae_initial_guess(initial_guesses_phi_sep,i_ext,seperator)
 
-        # the indexes containing the Phi_seperator values at each node are the indexes of the algebraic equations
-        algvars = np.arange(Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4,Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4+seperator.n_y+2,1)
-        params = [i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator]
-        options =  {'user_data':params, 'rtol':1e-8,
-            'atol':1e-10, 'algebraic_vars_idx':algvars, 'first_step_size':1e-16,'rootfn':terminate_check,'nr_rootfns':n_roots}
-             #          , 'compute_initcond':'yp0', 'max_steps':10000}
+    # the indexes containing the Phi_seperator values at each node are the indexes of the algebraic equations
+    algvars = np.arange(Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4,Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4+seperator.n_y+2,1)
+    params = [i_ext,Anode,Geom_an,Cathode,Geom_ca,seperator]
+    options =  {'user_data':params, 'rtol':1e-8,
+        'atol':1e-12, 'algebraic_vars_idx':algvars, 'first_step_size':1e-15,'rootfn':terminate_check,'nr_rootfns':n_roots}
+            #          , 'compute_initcond':'yp0', 'max_steps':10000}
 
-        solver = dae('ida', residual_dae, **options)
-        t_start = sim_inputs[-1] # [s]
-        t_end = t_start + t_sim_max[ind] # max length of time passed in the integration [s]
-        times = np.linspace(t_start,t_end,10000)
-        t_span = t_end - t_start
-        SV_0 = sim_inputs[0:-1]
-        SV_dot_0  = np.zeros_like(SV_0)
-        
-        solution = solver.solve(times, SV_0, SV_dot_0)    
-        
-        new_outputs = np.stack((*np.transpose(solution.values.y), solution.values.t, i_ext*np.ones_like(solution.values.t)))
-        if ind == 0:
-            sim_outputs = new_outputs
-        else:
-            sim_outputs = np.concatenate((sim_outputs,new_outputs), axis = 1)
- 
-        for ind, i in enumerate(sim_outputs):
-            if ind<len(sim_outputs)-1:
-                sim_inputs[ind] = i[-1] 
+    solver = dae('ida', residual_dae, **options)
+    t_start = sim_inputs[-1] # [s]
+    t_end = t_start + t_sim_max[ind] # max length of time passed in the integration [s]
+    times = np.linspace(t_start,t_end,1000)
+    t_span = t_end - t_start
+    SV_0 = sim_inputs[0:-1]
+    SV_dot_0  = np.zeros_like(SV_0)
+    
+    solution = solver.solve(times, SV_0, SV_dot_0)    
+    
+    new_outputs = np.stack((*np.transpose(solution.values.y), solution.values.t, i_ext*np.ones_like(solution.values.t)))
+    if ind == 0:
+        sim_outputs = new_outputs
+    else:
+        sim_outputs = np.concatenate((sim_outputs,new_outputs), axis = 1)
+
+    for ind, i in enumerate(sim_outputs):
+        if ind<len(sim_outputs)-1:
+            sim_inputs[ind] = i[-1] 
 '''
 Post Processing
 '''
-Delta_Phi_dl_an = sim_outputs[0]
-C_Li_an = sim_outputs[1:Geom_an.n_r+1]
-Delta_Phi_dl_ca = sim_outputs[Geom_an.n_r+1]
-C_Li_ca = sim_outputs[Geom_an.n_r+2:Geom_an.n_r+Geom_ca.n_r+2]
-C_Li_plus_sep = sim_outputs[Geom_an.n_r+Geom_ca.n_r+2:Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4]
-if ivp == False:
-    Phi_sep = sim_outputs[Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4:-2]
+Delta_Phi_dl_an = sim_outputs[SV_indx.dPhi_an]
+C_Li_an = sim_outputs[SV_indx.C_an : SV_indx.dPhi_ca]
+Delta_Phi_dl_ca = sim_outputs[SV_indx.dPhi_ca]
+C_Li_ca = sim_outputs[SV_indx.C_ca : SV_indx.C_sep]
+C_Li_plus_sep = sim_outputs[SV_indx.C_sep : SV_indx.Phi_sep]
+Phi_sep = sim_outputs[SV_indx.Phi_sep : -2]
 time = sim_outputs[-2]
 i_ex = sim_outputs[-1]
+
+# add the double layer potential to Phi_sep (is this helpful or should I keep it relative to the first node?)
+# Phi_sep = Phi_sep + Delta_Phi_dl_an
 
 ## Anode LiC6 -> Li+ + C6 + e- 
 U_cell_an = np.zeros_like(sim_outputs[0])
@@ -394,8 +314,7 @@ mol_sep = np.sum(mol_sep_cv,axis=0) # total moles of Lithium ions in the Cathode
 Plotting
 '''
 # Create a label for each node
-r_label_an = node_plot_labels(Geom_an.r_node,r"$r_{an} = $")
-    
+r_label_an = node_plot_labels(Geom_an.r_node,r"$r_{an} = $")  
 r_label_ca = node_plot_labels(Geom_ca.r_node,r"$r_{ca} = $")
     
 nodes_sep = np.arange(seperator.n_y+2)*seperator.dy
@@ -510,51 +429,37 @@ ax9.set_ylabel(r"$i_o\: [A/m^2]$")
 fig5.tight_layout()
 
 #Seperator Concentration
-plt6 = plt.figure(6)
+fig6, ax10 = plt.subplots()
 for ind, ele in enumerate(C_Li_plus_sep):
-    plt.plot(time,ele/Cathode.C_int[Cathode.ind_ion],label=y_label[ind])
-plt.legend(ncol=2, bbox_to_anchor=(1, 0.5),loc = 'center left')
-plt.title("Effective Concentration of Li+ in the Seperator")
-plt.xlabel("time [s]")
-plt.ylabel(r"Li+ [-]$")
-plt.tight_layout()
+    ax10.plot(time,ele/Cathode.C_int[Cathode.ind_ion],label=y_label[ind])
+box = ax10.get_position()
+ax10.set_position([box.x0, box.y0 + box.height * 0.2, box.width, box.height * 0.8])
+ax10.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3)
+#ax10.legend(ncol=2, bbox_to_anchor=(1, 0.5),loc = 'center left')
+ax10.set_title("Effective Concentration of Li+ in the Seperator")
+ax10.set_xlabel("time [s]")
+ax10.set_ylabel("Li+ [-]")
+#fig6.tight_layout()
 
+'''
+# Plot to make sure Lithium is being conserved
 plt7 = plt.figure(7)
 plt.plot(time,mol_sep)
 plt.title("Total Amount of Lithium in the Seperator")
 plt.xlabel("time [s]")
 plt.ylabel(r"Li+ $[\frac{mol}{m^2}]$")
-
-'''
-plt8 = plt.figure(8)
-plt.plot(time,i_far_an*A_sg_an)
-plt.plot(time,-i_far_ca*A_sg_ca)
 '''
 
-if ivp == False:
-    #add graph of phi seperator here
-    plt9 = plt.figure(9)
-    for ind, ele in enumerate(Phi_sep):
-        plt.plot(time,ele,label=y_label[ind])
-    plt.legend(ncol=2, bbox_to_anchor=(1, 0.5),loc = 'center left')
-    plt.title("Potential at each node in the Seperator")
-    plt.xlabel("time [s]")
-    plt.ylabel(r"Phi_{sep} [V]$")
-    plt.tight_layout()
-
-    '''
-    plt10 = plt.figure(10)
-    last = 0
-    phi = 0
-    for ind, ele in enumerate(Phi_sep):
-        plt.plot(time,np.ones_like(time)*phi,label=y_label[ind])
-        phi = last - i_ext*seperator.dy/seperator.sigma
-        last = phi
-    plt.legend(ncol=2, bbox_to_anchor=(1, 0.5),loc = 'center left')
-    plt.title("Potential at each node in the Seperator")
-    plt.xlabel("time [s]")
-    plt.ylabel(r"Phi_{sep} [V]$")
-    plt.tight_layout()
-    '''
+# phi seperator
+fig8, ax = plt.subplots()
+for ind, ele in enumerate(Phi_sep):
+    ax.plot(time,ele,label=y_label[ind])
+box = ax.get_position()
+ax.set_position([box.x0 + box.width*.05, box.y0 + box.height * 0.2, box.width*.95, box.height * 0.8])
+ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3)
+#plt.legend(ncol=2, bbox_to_anchor=(1, 0.5),loc = 'center left')
+ax.set_title("Potential at each node in the Seperator")
+ax.set_xlabel("time [s]")
+ax.set_ylabel(r"$Phi_{sep}\;[V]$")
 
 plt.show()
