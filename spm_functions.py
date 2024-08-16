@@ -25,6 +25,12 @@ def Half_Cell_Eqlib_Potential(HalfCell,F = 96485.34, T_amb = 298.15, R = 8.3145)
     U_Cell : The equalibrium (open cell) potential for the half cell [V]
     """
     n_elc = HalfCell.n
+    #T_amb = 273.15 + 25 [K]
+    print("n",n_elc)
+    #T_amb = 273.15 + 25 #[K]
+    print("n",n_elc)
+    #T_amb = 273.15 + 25 #[K]
+    #T_amb = 273.15 + 25 [K]
     T = HalfCell.Temp
      
     Delta_G_cell = np.dot(HalfCell.G,HalfCell.nu) # Standard Gibbs Free Energy for the half cell reaction
@@ -34,7 +40,6 @@ def Half_Cell_Eqlib_Potential(HalfCell,F = 96485.34, T_amb = 298.15, R = 8.3145)
     U_0_Cell = U_0_Cell_amb + (T- T_amb)*Delta_S/(n_elc*F) # Adjust for temperature
     U_Cell = U_0_Cell - R*T/n_elc/F*np.log(np.prod(np.power(HalfCell.activity,HalfCell.nu))) # adjust for concentration
     return U_Cell
-
 
 def Butler_Volmer(i_o,V,U,BnF_RT_a,BnF_RT_c):
     """
@@ -46,6 +51,8 @@ def Butler_Volmer(i_o,V,U,BnF_RT_a,BnF_RT_c):
     ----------
     i_o : Exchange Current Density [A/m^2] 
     V : Electrode potential difference at the electrode-electrolyte interface (phi_ed - phi_elyte) [V]
+    i_o : Exchange Current Density [mA/cm^2] 
+    V : Electrode potential difference at the electrode-electrolyte interface [V]
     U : Equilibrium potential [V]
  
     Inside BnF_RT: a is for anodic, c is for cathodic
@@ -58,6 +65,17 @@ def Butler_Volmer(i_o,V,U,BnF_RT_a,BnF_RT_c):
     R : Universal gas constant
         8.3145 [J/mol-K]
     T : Temperature of the interface [K]  
+    V : Electrode potential difference at the electrode-electrolyte interface (phi_ed - phi_elyte) [V]
+    U : Equilibrium potential [V]
+    T : Temperature of the interface [K]    
+    F : Optional, Faraday's number
+        The default is 96.48534 [kC/equivalence]
+    Beta : Optional, The fraction of the total energy that impacts the activation energy of the cathode
+        The default is 0.5
+    R : Optional, Universal gas constant
+        The default is 0.0083145 [kJ/mol-K]
+     n: Optional, number of electrons
+        The default is 1 [equivalence/mol]
         
     Returns
     -------
@@ -341,7 +359,7 @@ def residual_dae(t,SV,SV_dot,resid,user_data):
     Phi_dl_ca = SV[Geom_an.n_r+1]
     C_electrolyte_ca = SV[Geom_an.n_r+Geom_ca.n_r+seperator.n_y+3]
     C_ca =  SV[Geom_an.n_r+2:Geom_an.n_r+Geom_ca.n_r+2] # Lithium concentration in the anode
-    
+
     Cathode, i_o_ca, U_c = update_activities(C_ca,Cathode,C_electrolyte_ca)
 
     i_far_c = Butler_Volmer(i_o_ca,Phi_dl_ca,U_c,Cathode.BnF_RT_an,Cathode.BnF_RT_ca)
@@ -383,3 +401,4 @@ def residual_dae(t,SV,SV_dot,resid,user_data):
     # Phi of the seperator (relative to the first node)
     resid[Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4:-1] = i_ext + seperator.sigma*(SV[Geom_an.n_r+Geom_ca.n_r+seperator.n_y+5:] - SV[Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4:-1])/seperator.dy
     resid[-1] = SV[Geom_an.n_r+Geom_ca.n_r+seperator.n_y+4] # sets the first node to have a potential of zero
+

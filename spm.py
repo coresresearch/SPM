@@ -25,6 +25,7 @@ from spm_functions import Species, Participant, Half_Cell, internal_electrode_ge
 #   thermodynamic potenitals. This happens durring discharging when a postive external current enters the anode
 #   and Lithium ions go from the anode to the cathode.
 # I use different diffusion coefficients for each phase
+# For the exchange current density I am assuming the reference concentration is the concentration of the solid electrode material (FePO4 or C6)
 
 '''
 USER INPUTS
@@ -65,8 +66,8 @@ gamma_Li_plus = 1
 gamma_LiFePO4 = 1
 gamma_FePO4 = 1
 
-# Kinetic parameters
-i_o_reff = 120 # Exchange Current Density [A/m^2] 
+# Kinetic parameters (both electrodes have the same reaction for now)
+i_o_reff = 120 # Exchange Current Density at a refference concentration [A/m^2] 
 Cap_dl = 6*10**-5 # Double Layer Capacitance [F/m^2]
 Beta = 0.5 # [-] Beta = (1 - Beta) in this case 
 # both Li+ and electrons are products in this reaction so they have postive coefficients
@@ -177,7 +178,6 @@ def terminate_check(t,SV,SV_dot,return_val,user_data):
     C_Li_check = SV[Geom_an.n_r] # Concentration of Lithium at the surface of the Anode
     return_val[2] = C_Li_check/Anode.C_int[Anode.ind_track] - X_Li_min
     return_val[3] = C_Li_check/Anode.C_int[Anode.ind_track] - X_Li_max
-    
     C_Li_check = SV[Geom_an.n_r+Geom_ca.n_r+1] # Concentration of Lithium at the surface of the Cathode
     return_val[4] = C_Li_check/Cathode.C_int[Cathode.ind_track] - X_Li_min
     return_val[5] = C_Li_check/Cathode.C_int[Cathode.ind_track] - X_Li_max 
@@ -257,7 +257,7 @@ for ind, ele in enumerate(Delta_Phi_dl_an):
 
 i_dl_an = i_ex/A_sg_an - i_far_an # Double Layer current [A/m^2]
 
-## Cathode LiFePO4 -> FePO4 + Li+ + e-
+## Cathode LiFePO4 -> Li+ + FePO4 + e-
 U_cell_ca = np.zeros_like(sim_outputs[0])
 i_far_ca = np.zeros_like(sim_outputs[0])
 i_o_ca = np.zeros_like(sim_outputs[0])
